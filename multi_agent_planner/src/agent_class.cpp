@@ -12,6 +12,10 @@ Agent::Agent()
   // initialize MPC/MIQP parameters
   InitializePlannerParameters();
 
+  // intialize random variables
+  gen_ = ::std::make_unique<std::mt19937>(id_);
+  dis_ = ::std::uniform_real_distribution<>(0.0, 1.0);
+
   // set initial yaw angle to 0
   yaw_ = 0;
 
@@ -139,6 +143,12 @@ void Agent::TrajPlanningIteration() {
   // initialize the current state
   state_curr_ = state_ini_;
 
+  // initialize the current trajectory
+  for (int i = 0; i < n_hor_ + 1; i++) {
+    traj_curr_.push_back(state_curr_);
+  }
+  traj_prev_ = traj_curr_;
+
   // wait for the planning period until the first path is generated
   while (!path_ready_) {
     if (planner_verbose_) {
@@ -160,33 +170,35 @@ void Agent::TrajPlanningIteration() {
 
     // wall clock start
     auto t_start_wall = ::std::chrono::high_resolution_clock::now();
+    auto duration_since_epoch = t_start_wall.time_since_epoch();
+    double seconds =
+        std::chrono::duration<double>(duration_since_epoch).count();
+    planning_start_time_hist_.push_back(seconds);
 
-    // generate safe corridor
-    GenerateSafeCorridor();
+    // check if we received the other trajectories on time
+    CheckOthersTrajectories();
 
-    // add safe corridor constraints with other agent constraints
-    GenerateTimeAwareSafeCorridor();
+    std::cout << "id_: " << id_ << " skip_planning_: " << skip_planning_
+              << std::endl;
+    if (!skip_planning_) {
 
-    // generate reference trajectory based on the last generated path
-    GenerateReferenceTrajectory();
+      // generate safe corridor
+      GenerateSafeCorridor();
 
-    // solve optimization problem and save the result to member variables
-    SolveOptimizationProblem();
+      // add safe corridor constraints with other agent constraints
+      GenerateTimeAwareSafeCorridor();
 
-    // compute yaw angle to look in the direction of travel
-    ComputeYawAngle();
+      // generate reference trajectory based on the last generated path
+      GenerateReferenceTrajectory();
 
-    // if the optimization didnt fail on the first iteration
-    if (traj_curr_.size() > 0) {
+      // solve optimization problem and save the result to member variables
+      SolveOptimizationProblem();
+
+      // compute yaw angle to look in the direction of travel
+      ComputeYawAngle();
+
       // check if we need to increment the reference path
       CheckReferenceTrajIncrement();
-
-      // publish the full generated trajectory for other agents
-      PublishTrajectoryFull();
-    } else {
-      // if at the beginning the optimization failed, do not increment the
-      // reference trajectory
-      increment_traj_ref_ = false;
     }
 
     // save cpu computation time
@@ -205,6 +217,10 @@ void Agent::TrajPlanningIteration() {
     // save wall computation time
     comp_time_tot_wall_.push_back(traj_comp_time_wall_ms);
 
+    // keep the previous trajectory if the computation time is bigger than the
+    // planning period and update the planning start time accordingly
+    UpdateCurrentTrajectory();
+
     /* sleep for the remaining time (the remainder of the modulo of the clock
     with the planning period is the sleeping time) */
     // get the clock now
@@ -217,6 +233,9 @@ void Agent::TrajPlanningIteration() {
     // compute the remaining time by modulo with the planning iteration
     double remaining_sleep_time_ms =
         (dt_ * step_plan_ * 1e3) - t_wall_ms % int(dt_ * step_plan_ * 1e3);
+
+    // publish the full generated trajectory for other agents
+    PublishTrajectoryFull();
 
     // sleep thread
     ::std::this_thread::sleep_for(
@@ -276,7 +295,6 @@ void Agent::UpdatePath() {
 
     // wall clock start
     auto t_start_wall = ::std::chrono::high_resolution_clock::now();
-
     // copy voxel grid before modifications
     voxel_grid_mtx_.lock();
     ::voxel_grid_util::VoxelGrid vg_util = voxel_grid_;
@@ -629,17 +647,22 @@ void Agent::CreateTrajectorySubsriberVector() {
 void Agent::TrajectoryOtherAgentsCallback(
     const ::multi_agent_planner_msgs::msg::Trajectory::SharedPtr &msg,
     const int &id) {
-  // lock mutex and save the trajectory message
-  traj_other_mtx_[id].lock();
-  traj_other_agents_[id] = *msg;
-  traj_other_mtx_[id].unlock();
+  double random_value = dis_(*gen_);
+  if (random_value > packet_loss_percentage_) {
+    ::std::this_thread::sleep_for(
+        std::chrono::milliseconds(int(communication_delay_ * 1000)));
+    // lock mutex and save the trajectory message
+    traj_other_mtx_[id].lock();
+    traj_other_agents_[id] = *msg;
+    traj_other_mtx_[id].unlock();
 
-  // compute the communication time
-  auto stamp_other = traj_other_agents_[id].stamp;
-  int64_t stamp_ns = stamp_other.sec * 1e9 + stamp_other.nanosec;
-  int64_t stamp_now = now().nanoseconds();
-  int64_t stamp_diff = stamp_now - stamp_ns;
-  com_latency_ms_[id].push_back(stamp_diff / 1e6);
+    // compute the communication time
+    auto stamp_other = traj_other_agents_[id].stamp;
+    int64_t stamp_ns = stamp_other.sec * 1e9 + stamp_other.nanosec;
+    int64_t stamp_now = now().nanoseconds();
+    int64_t stamp_diff = stamp_now - stamp_ns;
+    com_latency_ms_[id].push_back(stamp_diff / 1e6);
+  }
 }
 
 void Agent::PublishTrajectoryFull() {
@@ -648,6 +671,9 @@ void Agent::PublishTrajectoryFull() {
 
   // set the time stamp
   traj_msg.stamp = now();
+
+  // set the planning start time
+  traj_msg.planning_start_time = planning_start_time_hist_.back();
 
   // set the yaw angle
   traj_msg.yaw = yaw_;
@@ -1068,6 +1094,27 @@ void Agent::ComputeYawAngle() {
   return ::Eigen::Quaterniond(rotation_matrix);
 }
 
+void Agent::UpdateCurrentTrajectory() {
+  double comp_time = comp_time_tot_wall_.back();
+  // if the computation time smaller than the period time,
+  // keep currently computed traj_curr_ and update traj_prev_
+  if (dt_ * step_plan_ * 1e3 - comp_time > 0 && !skip_planning_) {
+    traj_prev_ = traj_curr_;
+  } else {
+    int start_idx = ::std::max(
+        0, static_cast<int>(floor(comp_time / (dt_ * step_plan_ * 1e3))));
+    traj_curr_.clear();
+    for (int i = start_idx + 1; i < traj_prev_.size(); i++) {
+      traj_curr_.push_back(traj_prev_[i]);
+    }
+    for (int i = 0; i < start_idx + 1; i++) {
+      traj_curr_.push_back(traj_curr_.back());
+    }
+    traj_prev_ = traj_curr_;
+    planning_start_time_hist_.back() += start_idx * dt_ * step_plan_;
+  }
+}
+
 ::std::vector<GRBLinExpr>
 Agent::GetGurobiPolyhedronConstraints(LinearConstraint3D &poly, GRBLinExpr *x) {
   ::std::vector<GRBLinExpr> polyhedron_gurobi_const;
@@ -1231,6 +1278,26 @@ Agent::AddHyperplane(::std::vector<LinearConstraint3D> &poly_const_vec,
     poly_const_tmp.push_back(poly_i);
   }
   return poly_const_tmp;
+}
+
+void Agent::CheckOthersTrajectories() {
+  skip_planning_ = false;
+  double planning_start_time = planning_start_time_hist_.back();
+  for (int i = 0; i < n_rob_; i++) {
+    if (i != id_) {
+      std::cout << "id: " << id_ << " i: " << i
+                << " planning time other: " << std::setprecision(15)
+                << traj_other_agents_[i].planning_start_time + dt_ * step_plan_
+                << " current planning time:" << planning_start_time
+                << std::endl;
+      double time_diff = fabs(traj_other_agents_[i].planning_start_time +
+                              dt_ * step_plan_ - planning_start_time);
+      if (time_diff > 0.01) {
+        skip_planning_ = true;
+        break;
+      }
+    }
+  }
 }
 
 void Agent::GenerateSafeCorridor() {
@@ -1767,7 +1834,7 @@ double Agent::ComputePathVelocity(::std::vector<::std::vector<double>> &path) {
   }
 
   //  go through each other robot and calculate the min_vel
-  for (int i = 0; i < traj_curr_.size(); i++) { 
+  for (int i = 0; i < traj_curr_.size(); i++) {
     ::Eigen::Vector3d start(traj_curr_[i][0], traj_curr_[i][1],
                             traj_curr_[i][2]);
     ::Eigen::Vector3d start_vel(traj_curr_[i][3], traj_curr_[i][4],
@@ -2241,6 +2308,8 @@ void Agent::DeclareRosParameters() {
   declare_parameter("goal", ::std::vector<double>(3, 0.0));
   declare_parameter("planner_verbose", false);
   declare_parameter("save_stats", false);
+  declare_parameter("packet_loss_percentage", 0.0);
+  declare_parameter("communication_delay", 0.0);
   declare_parameter("dmp_search_rad", 0.0);
   declare_parameter("dmp_n_it", 1);
   declare_parameter("path_planning_period", 0.1);
@@ -2283,7 +2352,6 @@ void Agent::InitializeRosParameters() {
   drone_radius_ = get_parameter("drone_radius").as_double();
   drone_z_offset_ = get_parameter("drone_z_offset").as_double();
   path_infl_dist_ = get_parameter("path_infl_dist").as_double();
-  com_latency_ = get_parameter("com_latency").as_double();
   r_u_ = get_parameter("r_u").as_double();
   r_x_ = get_parameter("r_x").as_double_array();
   r_n_ = get_parameter("r_n").as_double_array();
@@ -2301,6 +2369,8 @@ void Agent::InitializeRosParameters() {
   goal_curr_ = get_parameter("goal").as_double_array();
   planner_verbose_ = get_parameter("planner_verbose").as_bool();
   save_stats_ = get_parameter("save_stats").as_bool();
+  packet_loss_percentage_ = get_parameter("packet_loss_percentage").as_double();
+  communication_delay_ = get_parameter("communication_delay").as_double();
   dmp_search_rad_ = get_parameter("dmp_search_rad").as_double();
   dmp_n_it_ = get_parameter("dmp_n_it").as_int();
   path_planning_period_ = get_parameter("path_planning_period").as_double();

@@ -25,11 +25,13 @@ def generate_launch_description():
     radius = 22  
     center_x = 18 
     center_y = 15
-    n_rob = 10 
+    n_rob = 4 
     voxel_grid_range = [20.0, 20.0, 6.0]
     use_mapping_util = True
     free_grid = True
     save_stats = True
+    packet_loss_percentage = 0.0
+    communication_delay = 0.03
 
     # calculate equidistant start and goal positions on the circle
     start_positions = []
@@ -73,7 +75,9 @@ def generate_launch_description():
                       {'use_mapping_util': use_mapping_util},
                       {'voxel_grid_update_period': 10.0},
                       {'voxel_grid_range': voxel_grid_range},
-                      {'save_stats': save_stats}]
+                      {'save_stats': save_stats},
+                      {'packet_loss_percentage': packet_loss_percentage},
+                      {'communication_delay': communication_delay}]
         # if i == 8:
         #     params_sub = params_sub + [{'planner_verbose': True}]
         node_planner = Node(
