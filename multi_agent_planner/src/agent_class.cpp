@@ -28,6 +28,7 @@ Agent::Agent()
 
   // initialize trajectories of other agents
   traj_other_agents_.resize(n_rob_);
+  traj_other_agents_queue_.resize(n_rob_);
 
   // initialize communication latency of other agents
   com_latency_ms_.resize(n_rob_);
@@ -175,11 +176,18 @@ void Agent::TrajPlanningIteration() {
         std::chrono::duration<double>(duration_since_epoch).count();
     planning_start_time_hist_.push_back(seconds);
 
+    // save the received trajectories
+    for (int i = 0; i < n_rob_; i++) {
+      traj_other_mtx_[i].lock();
+      traj_other_agents_[i] = traj_other_agents_queue_[i];
+      traj_other_mtx_[i].unlock();
+    }
+
     // check if we received the other trajectories on time
     CheckOthersTrajectories();
 
-    std::cout << "id_: " << id_ << " skip_planning_: " << skip_planning_
-              << std::endl;
+    /* std::cout << "id_: " << id_ << " skip_planning_: " << skip_planning_ */
+    /*           << std::endl; */
     if (!skip_planning_) {
 
       // generate safe corridor
@@ -649,11 +657,9 @@ void Agent::TrajectoryOtherAgentsCallback(
     const int &id) {
   double random_value = dis_(*gen_);
   if (random_value > packet_loss_percentage_) {
-    ::std::this_thread::sleep_for(
-        std::chrono::milliseconds(int(communication_delay_ * 1000)));
     // lock mutex and save the trajectory message
     traj_other_mtx_[id].lock();
-    traj_other_agents_[id] = *msg;
+    traj_other_agents_queue_[id] = *msg;
     traj_other_mtx_[id].unlock();
 
     // compute the communication time
@@ -1159,22 +1165,8 @@ void Agent::GenerateTimeAwareSafeCorridor() {
     // go through each robot and add the hyperplane
     for (int j = 0; j < n_rob_; j++) {
       // get the last trajectory of the agent
-      traj_other_mtx_[j].lock();
       auto stamp_other = traj_other_agents_[j].stamp;
       ::multi_agent_planner_msgs::msg::Trajectory traj = traj_other_agents_[j];
-      traj_other_mtx_[j].unlock();
-
-      int64_t stamp_now = now().nanoseconds() / 1e6;
-
-      // get the stamp in milliseconds from the trajectory
-      int64_t stamp_ms = stamp_other.sec * 1e3 + stamp_other.nanosec / 1e6;
-
-      // compute the iteration number/difference; it should be 1
-      long long it_other = ::std::floor(stamp_ms / (dt_ * step_plan_ * 1e3));
-      long long it_now = ::std::floor(stamp_now / (dt_ * step_plan_ * 1e3));
-      long long it_diff = it_now - it_other;
-
-      int64_t stamp_diff = stamp_now - stamp_ms;
 
       // if j == id_, the trajectory size will be 0 so no need to check
       // that condition as well
@@ -1285,14 +1277,24 @@ void Agent::CheckOthersTrajectories() {
   double planning_start_time = planning_start_time_hist_.back();
   for (int i = 0; i < n_rob_; i++) {
     if (i != id_) {
-      std::cout << "id: " << id_ << " i: " << i
-                << " planning time other: " << std::setprecision(15)
-                << traj_other_agents_[i].planning_start_time + dt_ * step_plan_
-                << " current planning time:" << planning_start_time
-                << std::endl;
-      double time_diff = fabs(traj_other_agents_[i].planning_start_time +
-                              dt_ * step_plan_ - planning_start_time);
-      if (time_diff > 0.01) {
+      /* std::cout << "id: " << id_ << " i: " << i */
+      /*           << " planning time other: " << std::setprecision(15) */
+      /*           << traj_other_agents_[i].planning_start_time + dt_ *
+       * step_plan_ */
+      /*           << " current planning time:" << planning_start_time */
+      /*           << std::endl; */
+      ::multi_agent_planner_msgs::msg::Trajectory traj = traj_other_agents_[i];
+      double time_diff = fabs(traj.planning_start_time + dt_ * step_plan_ -
+                              planning_start_time);
+
+      auto stamp_other = traj.stamp;
+      int64_t stamp_ns = stamp_other.sec * 1e9 + stamp_other.nanosec;
+      int64_t stamp_now = now().nanoseconds();
+      int64_t stamp_diff = stamp_now - stamp_ns;
+      double passed_time = stamp_diff / 1e6;
+      bool delay_constraint =
+          (passed_time < dis_(*gen_) * communication_delay_ * 1e3);
+      if (time_diff > 0.01 || delay_constraint) {
         skip_planning_ = true;
         break;
       }
@@ -1843,9 +1845,7 @@ double Agent::ComputePathVelocity(::std::vector<::std::vector<double>> &path) {
       if (j == id_)
         continue;
       // get the last trajectory of the agent
-      traj_other_mtx_[j].lock();
       ::multi_agent_planner_msgs::msg::Trajectory traj = traj_other_agents_[j];
-      traj_other_mtx_[j].unlock();
       if (traj.states.size() != 0) {
         Vec3f pos_other(traj.states[i].position[0], traj.states[i].position[1],
                         traj.states[i].position[2]);

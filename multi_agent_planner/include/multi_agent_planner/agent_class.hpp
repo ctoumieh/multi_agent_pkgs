@@ -478,6 +478,8 @@ private:
   ::std::vector<::std::vector<double>> control_curr_;
   // received trajectories of other drones
   ::std::vector<::multi_agent_planner_msgs::msg::Trajectory> traj_other_agents_;
+  // received trajectories of other drones in a queue
+  ::std::vector<::multi_agent_planner_msgs::msg::Trajectory> traj_other_agents_queue_;
   // seeds used for the generation of the polyhedra
   ::std::vector<::std::vector<double>> poly_seeds_;
   // polyhedra for visualization without other agents

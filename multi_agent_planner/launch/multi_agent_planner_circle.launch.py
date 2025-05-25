@@ -25,13 +25,13 @@ def generate_launch_description():
     radius = 22  
     center_x = 18 
     center_y = 15
-    n_rob = 4 
+    n_rob = 6 
     voxel_grid_range = [20.0, 20.0, 6.0]
     use_mapping_util = True
     free_grid = True
     save_stats = True
     packet_loss_percentage = 0.0
-    communication_delay = 0.03
+    communication_delay = 0.05
 
     # calculate equidistant start and goal positions on the circle
     start_positions = []
