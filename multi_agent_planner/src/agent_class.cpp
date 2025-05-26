@@ -655,7 +655,7 @@ void Agent::CreateTrajectorySubsriberVector() {
 void Agent::TrajectoryOtherAgentsCallback(
     const ::multi_agent_planner_msgs::msg::Trajectory::SharedPtr &msg,
     const int &id) {
-  double random_value = dis_(*gen_);
+  double random_value = 100 * dis_(*gen_);
   if (random_value > packet_loss_percentage_) {
     // lock mutex and save the trajectory message
     traj_other_mtx_[id].lock();
