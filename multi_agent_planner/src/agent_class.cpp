@@ -36,14 +36,6 @@ Agent::Agent()
   // create gurobi model
   CreateGurobiModel();
 
-  // create a subscriber to a topic to receive the current state of the drone:
-  // for now we will not do this and assume perfect control (the state of the
-  // drone is the second position of the generated trajectory); when receiving
-  // the state form a simulator or the real drone, we need to account for delay
-  // and time to the next planning iteration by simulating the state forward in
-  // time before using it
-  // TODO: later
-
   // create prefix for publishers topic name
   ::std::string topic_name = topic_name_ + "_" + ::std::to_string(id_);
 
