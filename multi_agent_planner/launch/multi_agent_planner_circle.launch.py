@@ -36,7 +36,7 @@ def generate_launch_description():
     )
 
     # define params
-    n_rob = 6
+    n_rob = 2
     radius = 22  
     center_x = 18 
     center_y = 15

@@ -229,6 +229,9 @@ void Agent::TrajPlanningIteration() {
     // planning period and update the planning start time accordingly
     UpdateCurrentTrajectory();
 
+    // publish the full generated trajectory for other agents
+    PublishTrajectoryFull();
+
     /* sleep for the remaining time (the remainder of the modulo of the clock
     with the planning period is the sleeping time) */
     // get the clock now
@@ -241,9 +244,6 @@ void Agent::TrajPlanningIteration() {
     // compute the remaining time by modulo with the planning iteration
     double remaining_sleep_time_ms =
         (dt_ * step_plan_ * 1e3) - t_wall_ms % int(dt_ * step_plan_ * 1e3);
-
-    // publish the full generated trajectory for other agents
-    PublishTrajectoryFull();
 
     // sleep thread
     ::std::this_thread::sleep_for(
@@ -663,7 +663,7 @@ void Agent::TrajectoryOtherAgentsCallback(
     traj_other_mtx_[id].unlock();
 
     // compute the communication time
-    auto stamp_other = traj_other_agents_[id].stamp;
+    auto stamp_other = traj_other_agents_queue_[id].stamp;
     int64_t stamp_ns = stamp_other.sec * 1e9 + stamp_other.nanosec;
     int64_t stamp_now = now().nanoseconds();
     int64_t stamp_diff = stamp_now - stamp_ns;
