@@ -1,0 +1,54 @@
+/**: 
+  ros__parameters:
+    get_grid_service_name: "/env_builder_node/get_voxel_grid" # origin frame of the published poinctloud
+    voxel_grid_range: [20.0, 20.0, 6.0] # voxel grid size to request from env_builder; if we are using the mapping util, this should be specified in the config file of the mapping_util
+    publish_voxel_grid: true # if true, publish the local voxel grid of each agent
+    voxel_grid_update_period: 0.2 # voxel grid update period in seconds for requests from env_builder; if we are using the mapping_util, the publishing rate of the env_builder will be the update rate of the voxel grid; there are ros topic messages drops everytime we call the voxel grid service that should be looked at
+    use_mapping_util: false # whether to use mapping_util as a voxel grid source or env_builder
+    topic_name: "agent" # topic prefix for publishing trajectory
+    world_frame: "world" # frame for publishing the trajectories, position, path ...
+    n_rob: 1 # number of agents
+    id: 0 # id of the planning agent
+    n_x: 9 # number of state variables (9 for jerk control, 6 for acceleration control
+    n_u: 3 # number of control variables (3 for jerk/acceleration control)
+    n_hor: 9 # number of mpc steps
+    dt: 0.1 # step time of the mpc
+    path_vel_min: 2.5 # minimum discretization velocity of the path
+    path_vel_max: 3.0 # maximum discretization velocity of the path
+    sens_dist: 0.05 # sensitivity of the distance when computing the path_vel in GetVoxelVelocityLimit 
+    sens_pot: 0.18 # sensitivity of the potential when computing the path_vel in GetVoxelVelocityLimit 
+    path_vel_dec: 0.0 # deceleration of discretization velocity of the path after every time step; stuff works better without it at 5.0 path_vel
+    traj_ref_points_to_keep: 6 # number of reference trajectory points to keep at the next iteration for smoothness
+    rk4: false # whether to use rk4 or euler
+    step_plan: 1 # number of mpc steps to skip during planning; not tested yet - TODO
+    thresh_dist: 1.0 # threshold distance to move forward the reference trajectory on the path
+    poly_hor: 4 # number of polyhedra per planning iteration
+    n_it_decomp: 42 # number of decomposition iterations for polyhedra generation
+    use_cvx: true # if true, use our method for polyhedra generation, otherwise use Liu's method
+    use_cvx_new: false # if true, use our new method (not the original method); it's better if it's false
+    drone_radius: 0.25 # the drone radius
+    drone_z_offset: 0.25 # z offset to avoid downwas (b value in ellipse function)
+    com_latency: 0.0 # communication latency in seconds
+    r_u: 0.01 # control weights
+    r_x: [100.0, 100.0, 100.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0] # state variables error weight (except for the last state)
+    r_n: [100.0, 100.0, 100.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0] # last state variable error weight
+    max_vel: 20.0 # maximum variable set in the optimization
+    max_acc_z: 15.0 # maximum acceleration in the z direction
+    min_acc_z: -15.0 # minimum acceleration in the z direction
+    max_acc_xy: 15.0 # maximum acceleration in the x and y directions
+    min_acc_xy: -15.0 # minimum acceleration in the x and y directions
+    max_jerk: 60.0 # maximum jerk
+    drag_coeff: [0.0, 0.0, 0.0] # drag coefficients
+    state_ini: [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # initial state of the agent
+    goal: [42.15, 42.15, 1.5] # goal of the agent
+    planner_verbose: false # if true display planner diagnostics
+    save_stats: false # if true, save computation time statistics and state history
+    gurobi_verbose: false # if true, display gurobi optimization information  
+    path_infl_dist: 0.3 # distance to inflate the obstacles with when doing path finding
+    dmp_search_rad: 1.5 # search radius for the dmp
+    dmp_n_it: 1 # number of iterations for the iterative dmp planner
+    path_planning_period: 0.12 # path planning period
+    mass: 1.0 # drone mass
+    yaw_idx: 3 # index of the reference point that we want to look at with yaw 
+    k_p_yaw: 1.0 # yawing dynamics
+    remove_corners: false # if true, allow diagonal motion close to obstacles

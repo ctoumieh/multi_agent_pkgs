@@ -12,6 +12,7 @@ def generate_launch_description():
         get_package_share_directory('multi_agent_planner'),
         'config',
         # 'agent_default_config.yaml'
+        # 'agent_omninxt_config.yaml'
         'agent_agile_config.yaml'
     )
     config_mapper = os.path.join(
