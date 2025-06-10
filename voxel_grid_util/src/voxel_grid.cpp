@@ -309,6 +309,10 @@ double VoxelGrid::GetVoxSize() const { return vox_size_; }
 
 unsigned int VoxelGrid::GetDataSize() const { return data_size_; }
 
+voxel_data_type VoxelGrid::GetVoxelData(const unsigned int idx) const {
+  return data_[idx];
+}
+
 std::vector<voxel_data_type> VoxelGrid::GetData() const { return data_; }
 
 void AddObstacle(VoxelGrid::Ptr vg, const Eigen::Vector3d &center_obs,

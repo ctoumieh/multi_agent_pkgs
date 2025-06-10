@@ -9,3 +9,6 @@ float64 voxel_size
 
 # voxel grid data
 int8[] data
+
+# dynamic obstacles
+Obstacle[] dyn_obstacles

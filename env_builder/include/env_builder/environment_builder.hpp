@@ -6,10 +6,17 @@
 #include <env_builder_msgs/msg/voxel_grid_stamped.hpp>
 #include <env_builder_msgs/srv/get_voxel_grid.hpp>
 #include <iostream>
+#include <mutex>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/vector3.hpp>
+#include <std_msgs/msg/color_rgba.hpp>
 #include <stdlib.h>
 #include <string>
+#include <utility>
 
 namespace env_builder {
 class EnvironmentBuilder : public ::rclcpp::Node {
@@ -24,29 +31,44 @@ private:
   // initialize ros parameters
   void InitializeRosParameters();
 
-  // create an empty voxel grid with unknown voxels
+  // create empty/unknown voxel grids (static)
   void CreateEmptyVoxelGrid();
 
   // add the randomly generated obstacles to the voxel grid
   void AddObstacles();
 
-  // inflate the obstacles by inflation_dist_
-  void InflateObstacles();
+  // generate the initial positions and sizes of the dynamic obstacles
+  void GenerateDynObstacles();
 
-  // generate potential field using potential_dist_ and potential_pow_
-  void CreatePotentialField();
+  // update the position of the dynamic obstacles and fill the voxel grid
+  void UpdateDynObstacles();
+
+  // linear movement function
+  ::std::pair<::Eigen::Vector3d, ::Eigen::Vector3d>
+  LinearMotion(const ::Eigen::Vector3d initial_position,
+               const ::Eigen::Vector3d direction, const double speed);
+
+  // trefoil movement function
+  ::std::pair<::Eigen::Vector3d, ::Eigen::Vector3d>
+  TrefoilMotion(const ::Eigen::Vector3d initial_position,
+                const ::Eigen::Vector3d amplitude, const double offset,
+                const double speed);
 
   // save obstacle pointcloud to file
   void SaveObstacles();
 
-  // create the environment pointcloud to publish it regularly
-  void CreateEnvironmentPointCloud();
+  // create the pointcloud from grid to publish it
+  ::std::shared_ptr<::sensor_msgs::msg::PointCloud2>
+  CreatePointCloudFromGrid(::voxel_grid_util::VoxelGrid::Ptr voxel_grid_ptr);
 
   // create the environment voxel grid to publish it regularly
-  void CreateEnvironmentVoxelGrid();
+  ::env_builder_msgs::msg::VoxelGridStamped CreateEnvironmentVoxelGrid();
 
-  // function that publishes the environment pointcloud at constant frequency
-  void TimerCallbackEnvironmentPC();
+  // create a pointcloud from the current dynamic obstacle positions and size
+  void CreateDynamicPointCloud();
+
+  // publish dynamic obstacles as boxes for rviz visualization_msgs
+  void PublishDynamicBoxes();
 
   // function that publishes the environment voxel grid at constant frequency
   void TimerCallbackEnvironmentVG();
@@ -75,16 +97,38 @@ private:
   // voxel grid publishing period
   double publish_period_;
 
+  // obstacle map parameters
+  ::std::vector<double> range_obst_;
+  ::std::vector<double> origin_obst_;
+  int rand_seed_;
+
   // obstacles parameters
   bool multi_obst_size_;
   bool multi_obst_position_;
-  ::std::vector<double> range_obst_;
-  ::std::vector<double> origin_obst_;
   ::std::vector<double> size_obst_;
   ::std::vector<double> size_obst_vec_;
   ::std::vector<double> position_obst_vec_;
   int n_obst_;
-  int rand_seed_;
+
+  // dynamic obstacles parameters
+  int motion_mode_;
+  bool multi_dyn_obst_size_;
+  bool multi_dyn_obst_position_;
+  ::std::vector<double> size_dyn_obst_;
+  ::std::vector<double> size_dyn_obst_vec_;
+  ::std::vector<double> position_dyn_obst_vec_;
+  ::std::vector<::Eigen::Vector3d> position_dyn_obst_ini_vec_;
+  ::std::vector<::Eigen::Vector3d> size_dyn_obst_ini_vec_;
+  ::std::vector<::std::pair<::Eigen::Vector3d, ::Eigen::Vector3d>>
+      pos_vel_dyn_obst_vec_curr_;
+  int n_dyn_obst_;
+  double speed_;
+  ::std::vector<double> offset_;
+  ::std::vector<double> amplitude_;
+  ::std::vector<double> direction_;
+  // starting time: to get the real starting point multiply by pulish_period
+  // then  modulo 2*pi
+  int time_iter_;
 
   // environment message params
   ::std::string env_pc_topic_;
@@ -93,14 +137,22 @@ private:
 
   // member variables
   ::voxel_grid_util::VoxelGrid::Ptr voxel_grid_shared_ptr_;
+  ::voxel_grid_util::VoxelGrid::Ptr voxel_grid_dyn_shared_ptr_;
 
-  // variables to publish the environment pointcloud at constant frequency
+  // variables to publish the environment static pointcloud at constant
+  // frequency
   ::std::shared_ptr<::sensor_msgs::msg::PointCloud2> env_pc_msg_;
-  ::rclcpp::TimerBase::SharedPtr env_pub_timer_;
   ::rclcpp::Publisher<::sensor_msgs::msg::PointCloud2>::SharedPtr env_pc_pub_;
+  ::std::shared_ptr<::sensor_msgs::msg::PointCloud2> env_dyn_pc_msg_;
+  ::rclcpp::Publisher<::sensor_msgs::msg::PointCloud2>::SharedPtr
+      env_dyn_pc_pub_;
+  ::rclcpp::TimerBase::SharedPtr env_pub_timer_;
+
+  // publisher for the dynamic obstacles as boxes
+  ::rclcpp::Publisher<::visualization_msgs::msg::MarkerArray>::SharedPtr
+      marker_pub_;
 
   // variable to publish the environement voxel grid at constant frequency
-  ::env_builder_msgs::msg::VoxelGridStamped voxel_grid_stamped_msg_;
   ::rclcpp::TimerBase::SharedPtr voxel_grid_timer_;
   ::rclcpp::Publisher<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr
       voxel_grid_pub_;

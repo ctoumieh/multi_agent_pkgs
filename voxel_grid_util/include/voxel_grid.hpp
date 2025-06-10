@@ -129,6 +129,9 @@ public:
   // return -1 if the coordinate is outside the grid
   voxel_data_type GetVoxelDouble(const Eigen::Vector3d &coord_dbl) const;
 
+  // get voxel data from index
+  voxel_data_type GetVoxelData(const unsigned int idx) const;
+
   // get the voxel value from real coordinates (global)
   // return -1 if the coordinate is outside the grid
   voxel_data_type GetVoxelGlobal(const Eigen::Vector3d &coord_global) const;

@@ -10,12 +10,16 @@ find_package(PCL REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(env_builder_msgs REQUIRED)
 
 set(DEPENDENCIES
   rclcpp
   pcl_conversions
   sensor_msgs
+  visualization_msgs
+  geometry_msgs
   env_builder_msgs
 )
 

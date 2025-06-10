@@ -11,6 +11,7 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 
 set(MSG_FILES
+  "msg/Obstacle.msg"
   "msg/VoxelGrid.msg"
   "msg/VoxelGridStamped.msg"
 )

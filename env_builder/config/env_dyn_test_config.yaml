@@ -1,6 +1,6 @@
 env_builder_node: 
   ros__parameters:
-    origin_grid: [0.0, 0.0, -8.0] # origin of the voxel grid
+    origin_grid: [0.0, -20.0, -8.0] # origin of the voxel grid
     dimension_grid: [40.0, 40.0, 20.0] # dimensions in meters
     vox_size: 0.4 # voxel size of the grid
     free_grid: true # if true the grid is initialized to free instead of unknown
@@ -14,18 +14,18 @@ env_builder_node:
     size_obst: [0.1, 0.1, 10.0] # height x width x length
     size_obst_vec: [0.5, 2.2, 5.0, 0.5, 2.2, 5.0] # x,y,z size of each obstacle concatenated
     position_obst_vec: [0.0, 3.0, 0.0, 0.0, 6.0, 0.0] # x,y,z position of each obstacle concatenated
-    n_obst: 10 # 360, 315, 270, 225, 180, 135, 90, number of obstacles (only used if we want to use random generation, otherwise the number of obstacles is inferred from position_obst_vec)
+    n_obst: 0 # 360, 315, 270, 225, 180, 135, 90, number of obstacles (only used if we want to use random generation, otherwise the number of obstacles is inferred from position_obst_vec)
 
-    motion_mode: 1 # motion mode of the obstacles: 0=linear, 1=trefoil; 
+    motion_mode: 0 # motion mode of the obstacles: 0=linear, 1=trefoil; 
     multi_dyn_obst_size: false # if false, use size_obst as a common size for all obstacles; otherwise use size_obst_multi to define the size of each obstacle
     multi_dyn_obst_position: true # if false, generate positions randomly using normal distribution, if true use position_obst_multi to define the position of each obstacle
     size_dyn_obst: [1.0, 1.0, 1.0] # height x width x length
-    size_dyn_obst_vec: [0.5, 2.2, 5.0, 0.5, 2.2, 5.0] # x,y,z size of each obstacle concatenated
-    position_dyn_obst_vec: [20.0, 20.0, 5.0, 10.0, 10.0, 6.0, 12.0, 10.0, 5.0, 19.0, 5.0, 8.0, 15.0, 25.0, 5.0, 30.0, 10.0, 8.0] # x,y,z position of each obstacle concatenated
-    n_dyn_obst: 10 # 360, 315, 270, 225, 180, 135, 90, number of obstacles (only used if we want to use random generation, otherwise the number of obstacles is inferred from position_obst_vec)
-    speed: 0.4 # speed of the dynamic obstacles
-    offset: [1.0, 2.0, 1.2, 1.5, 1.8, 2.6] # offset for the trefoil motion of each obstacle
-    amplitude: [1.0, 1.0, 2.0, 3.0, 1.0, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 ] # amplitudes x,y,z for each obstacle concatenated
+    size_dyn_obst_vec: [0.5, 2.2, 5.0] # x,y,z size of each obstacle concatenated
+    position_dyn_obst_vec: [20.0, 20.0, 10.0] # x,y,z position of each obstacle concatenated
+    n_dyn_obst: 0 # 360, 315, 270, 225, 180, 135, 90, number of obstacles (only used if we want to use random generation, otherwise the number of obstacles is inferred from position_obst_vec)
+    speed: 3.0 # speed of the dynamic obstacles
+    offset: [1.0] # offset for the trefoil motion of each obstacle
+    amplitude: [3.0, 0.0, 0.0] # amplitudes x,y,z for each obstacle concatenated
     time_iter: 0 # time from which to start the trefoil motion
     direction: [1.0, 0.0, 0.0] # concatenation of 3d vectors that are the motion direction of the dynamic obstacles
 
