@@ -34,7 +34,7 @@ EnvironmentBuilder::EnvironmentBuilder()
       "~/" + env_pc_topic_ + "_dyn", 1);
 
   // create dynamic obstacles publisher as boxes
-  marker_pub_ = this->create_publisher<::visualization_msgs::msg::MarkerArray>("dyn_obstacles", 10);
+  marker_pub_ = this->create_publisher<::visualization_msgs::msg::MarkerArray>("~/dyn_obstacles", 10);
 
   // create voxel grid publisher and publish at constant frequency
   voxel_grid_pub_ = create_publisher<::env_builder_msgs::msg::VoxelGridStamped>(
@@ -197,7 +197,7 @@ void EnvironmentBuilder::PublishDynamicBoxes() {
         marker.scale.y = size_dyn_obst_ini_vec_[i].y();
         marker.scale.z = size_dyn_obst_ini_vec_[i].z();
 
-        // Color (semi-transparent blue)
+        // Color (green)
         marker.color.r = 0.0;
         marker.color.g = 1.0;
         marker.color.b = 0.0;
@@ -271,6 +271,7 @@ EnvironmentBuilder::CreateEnvironmentVoxelGrid() {
     for (int j = 0; j < 3; j++) {
       obst.position[j] = center_obst[j];
       obst.velocity[j] = vel_obst[j];
+      obst.dimension[j] = size_dyn_obst_ini_vec_[i][j];
     }
     voxel_grid_stamped_msg.voxel_grid.dyn_obstacles.push_back(obst);
   }

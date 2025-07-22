@@ -89,8 +89,10 @@ private:
   bool free_grid_;
   // inflation distance
   double inflation_dist_;
-  // potential distance and power
+  // potential distance params 
   double potential_dist_;
+  double potential_dist_max_;
+  double potential_speed_max_;
   double potential_pow_;
   // variables for camera fov angles (in radians)
   double fov_x_, fov_y_;
@@ -139,6 +141,10 @@ private:
   // raycast computation time
   ::std::vector<double> raycast_comp_time_;
   ::std::vector<double> merge_comp_time_;
+  ::std::vector<double> uncertain_comp_time_;
+  ::std::vector<double> inflate_comp_time_;
+  ::std::vector<double> potential_field_comp_time_;
+  ::std::vector<double> dyn_obst_field_comp_time_;
   ::std::vector<double> tot_comp_time_;
 };
 

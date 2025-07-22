@@ -18,8 +18,14 @@ set(MSG_FILES
   "msg/State.msg"
 )
 
+set(SRV_FILES
+  "srv/StartPlanning.srv"
+  "srv/StopPlanning.srv"
+)
+
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${MSG_FILES}
+  ${SRV_FILES}
   DEPENDENCIES builtin_interfaces
 )
 

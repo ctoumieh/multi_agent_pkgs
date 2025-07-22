@@ -296,6 +296,201 @@ void VoxelGrid::CreatePotentialField(double potential_dist, int pow) {
   }
 }
 
+void VoxelGrid::CreateDynamicObstaclesPotentialField(
+    const std::vector<Eigen::Vector3d> position_vec,
+    const std::vector<Eigen::Vector3d> velocity_vec,
+    const std::vector<Eigen::Vector3d> dimension_vec,
+    const double min_pot_distance, const double max_pot_distance,
+    const double max_speed, const voxel_data_type pot_value) {
+  // iterate through obstacles and create field along the velocity direction
+  for (int it = 0; it < position_vec.size(); it++) {
+    // voxels to slide forward to create the potential field
+    std::vector<Eigen::Vector3i> pot_field_base;
+    std::vector<Eigen::Vector3i> base_tmp;
+
+    // curr position, velocity and dimension
+    Eigen::Vector3d position = position_vec[it];
+    Eigen::Vector3d velocity = velocity_vec[it];
+    Eigen::Vector3d dimension = dimension_vec[it];
+
+    // if velocity is too low, continue to next obstacle
+    if (velocity.norm() < 0.1) {
+      continue;
+    }
+
+    // first create static potential field
+    // define min and max bounds
+    int min_x = floor((position[0] - dimension[0] / 2) / vox_size_) - 1;
+    int max_x = floor((position[0] + dimension[0] / 2) / vox_size_) + 1;
+
+    int min_y = floor((position[1] - dimension[1] / 2) / vox_size_) - 1;
+    int max_y = floor((position[1] + dimension[1] / 2) / vox_size_) + 1;
+
+    int min_z = floor((position[2] - dimension[2] / 2) / vox_size_) - 1;
+    int max_z = floor((position[2] + dimension[2] / 2) / vox_size_) + 1;
+
+    int pot_thickness = floor(min_pot_distance / vox_size_);
+
+    // generate potential on face with normal (-1, 0, 0)
+    for (int i = min_x - pot_thickness; i <= min_x; i++) {
+      for (int j = min_y - pot_thickness; j <= max_y + pot_thickness; j++) {
+        for (int k = min_z - pot_thickness; k <= max_z + pot_thickness; k++) {
+          Eigen::Vector3i pt(i, j, k);
+          if (!IsOccupied(pt) && !IsUnknown(pt)) {
+            SetVoxelInt(pt, pot_value);
+            if (i == min_x - pot_thickness) {
+              base_tmp.push_back(pt);
+            }
+          }
+        }
+      }
+    }
+    if (velocity.dot(Eigen::Vector3d(-1, 0, 0)) > 0) {
+      pot_field_base.insert(pot_field_base.end(), base_tmp.begin(),
+                            base_tmp.end());
+    }
+
+    // generate potential on face with normal (1, 0, 0)
+    base_tmp.clear();
+    for (int i = max_x; i <= max_x + pot_thickness; i++) {
+      for (int j = min_y - pot_thickness; j <= max_y + pot_thickness; j++) {
+        for (int k = min_z - pot_thickness; k <= max_z + pot_thickness; k++) {
+          Eigen::Vector3i pt(i, j, k);
+          if (!IsOccupied(pt) && !IsUnknown(pt)) {
+            SetVoxelInt(pt, pot_value);
+            if (i == max_x + pot_thickness) {
+              base_tmp.push_back(pt);
+            }
+          }
+        }
+      }
+    }
+    if (velocity.dot(Eigen::Vector3d(1, 0, 0)) > 0) {
+      pot_field_base.insert(pot_field_base.end(), base_tmp.begin(),
+                            base_tmp.end());
+    }
+
+    // generate potential on face with normal (0, -1, 0)
+    base_tmp.clear();
+    for (int j = min_y - pot_thickness; j <= min_y; j++) {
+      for (int i = min_x - pot_thickness; i <= max_x + pot_thickness; i++) {
+        for (int k = min_z - pot_thickness; k <= max_z + pot_thickness; k++) {
+          Eigen::Vector3i pt(i, j, k);
+          if (!IsOccupied(pt) && !IsUnknown(pt)) {
+            SetVoxelInt(pt, pot_value);
+            if (j == min_y - pot_thickness) {
+              base_tmp.push_back(pt);
+            }
+          }
+        }
+      }
+    }
+    if (velocity.dot(Eigen::Vector3d(0, -1, 0)) > 0) {
+      pot_field_base.insert(pot_field_base.end(), base_tmp.begin(),
+                            base_tmp.end());
+    }
+
+    // generate potential on face with normal (0, 1, 0)
+    base_tmp.clear();
+    for (int j = max_y; j <= max_y + pot_thickness; j++) {
+      for (int i = min_x - pot_thickness; i <= max_x + pot_thickness; i++) {
+        for (int k = min_z - pot_thickness; k <= max_z + pot_thickness; k++) {
+          Eigen::Vector3i pt(i, j, k);
+          if (!IsOccupied(pt) && !IsUnknown(pt)) {
+            SetVoxelInt(pt, pot_value);
+            if (j == max_y + pot_thickness) {
+              base_tmp.push_back(pt);
+            }
+          }
+        }
+      }
+    }
+    if (velocity.dot(Eigen::Vector3d(0, 1, 0)) > 0) {
+      pot_field_base.insert(pot_field_base.end(), base_tmp.begin(),
+                            base_tmp.end());
+    }
+
+    // generate potential on face with normal (0, 0, -1)
+    base_tmp.clear();
+    for (int k = min_z - pot_thickness; k <= min_z; k++) {
+      for (int i = min_x - pot_thickness; i <= max_x + pot_thickness; i++) {
+        for (int j = min_y - pot_thickness; j <= max_y + pot_thickness; j++) {
+          Eigen::Vector3i pt(i, j, k);
+          if (!IsOccupied(pt) && !IsUnknown(pt)) {
+            SetVoxelInt(pt, pot_value);
+            if (k == min_z - pot_thickness) {
+              base_tmp.push_back(pt);
+            }
+          }
+        }
+      }
+    }
+    if (velocity.dot(Eigen::Vector3d(0, 0, -1)) > 0) {
+      pot_field_base.insert(pot_field_base.end(), base_tmp.begin(),
+                            base_tmp.end());
+    }
+
+    // generate potential on face with normal (0, 0, 1)
+    base_tmp.clear();
+    for (int k = max_z; k <= max_z + pot_thickness; k++) {
+      for (int i = min_x - pot_thickness; i <= max_x + pot_thickness; i++) {
+        for (int j = min_y - pot_thickness; j <= max_y + pot_thickness; j++) {
+          Eigen::Vector3i pt(i, j, k);
+          if (!IsOccupied(pt) && !IsUnknown(pt)) {
+            SetVoxelInt(pt, pot_value);
+            if (k == max_z + pot_thickness) {
+              base_tmp.push_back(pt);
+            }
+          }
+        }
+      }
+    }
+    if (velocity.dot(Eigen::Vector3d(0, 0, 1)) > 0) {
+      pot_field_base.insert(pot_field_base.end(), base_tmp.begin(),
+                            base_tmp.end());
+    }
+
+    // go through the potential base and move it forward
+    // first clear vector of redundant voxels; to do this we first sort
+    // O(nlog(n))
+    std::sort(pot_field_base.begin(), pot_field_base.end(),
+              [](const Eigen::Vector3i &a, const Eigen::Vector3i &b) {
+                return std::tie(a.x(), a.y(), a.z()) <
+                       std::tie(b.x(), b.y(), b.z());
+              });
+    // then we keep unique values O(n)
+    pot_field_base.erase(
+        std::unique(pot_field_base.begin(), pot_field_base.end(),
+                    [](const Eigen::Vector3i &a, const Eigen::Vector3i &b) {
+                      return a == b;
+                    }),
+        pot_field_base.end());
+
+    // then go through each voxel and project it forward to create a potential
+    // field in the direction of the velocity
+    double distance = (std::min(1.0, velocity.norm() / max_speed)) *
+                          (max_pot_distance - min_pot_distance);
+    // convert distance to voxel resolution
+    distance = std::ceil(distance / vox_size_);
+    // compute direction
+    Eigen::Vector3d direction = velocity.normalized();
+    // go through every voxel of the base and translate it in the velocity
+    // direction and set the new voxel to a potential field value
+    for (int i = 0; i < distance; i++) {
+      Eigen::Vector3d offset = direction * i;
+      for (const auto &pt : pot_field_base) {
+        Eigen::Vector3i new_pt;
+        new_pt[0] = floor(pt[0] + 0.5 + offset[0]);
+        new_pt[1] = floor(pt[1] + 0.5 + offset[1]);
+        new_pt[2] = floor(pt[2] + 0.5 + offset[2]);
+        if (!IsOccupied(pt) && !IsUnknown(pt)) {
+          SetVoxelInt(new_pt, pot_value);
+        }
+      }
+    }
+  }
+}
+
 Eigen::Vector3d VoxelGrid::GetOrigin() const { return origin_; }
 
 Eigen::Vector3i VoxelGrid::GetDim() const { return dim_; }

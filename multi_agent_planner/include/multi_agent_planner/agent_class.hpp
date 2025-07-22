@@ -13,6 +13,8 @@
 #include "mapping_util/map_builder.hpp"
 #include "multi_agent_planner_msgs/msg/state.hpp"
 #include "multi_agent_planner_msgs/msg/trajectory.hpp"
+#include "multi_agent_planner_msgs/srv/start_planning.hpp"
+#include "multi_agent_planner_msgs/srv/stop_planning.hpp"
 #include "path_tools.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_ros/transform_broadcaster.h"
@@ -227,6 +229,23 @@ private:
   void
   GoalCallback(const ::geometry_msgs::msg::PointStamped::SharedPtr goal_msg);
 
+  // start planning callback
+  void StartPlanningCallback(
+      const ::std::shared_ptr<
+          ::multi_agent_planner_msgs::srv::StartPlanning::Request>
+          request,
+      ::std::shared_ptr<
+          ::multi_agent_planner_msgs::srv::StartPlanning::Response>
+          response);
+
+  // stop planning callback
+  void StopPlanningCallback(
+      const ::std::shared_ptr<
+          ::multi_agent_planner_msgs::srv::StopPlanning::Request>
+          request,
+      ::std::shared_ptr<::multi_agent_planner_msgs::srv::StopPlanning::Response>
+          response);
+
   // function to execute on the shutdown of the node to save computation time
   // statistics
   void OnShutdown();
@@ -291,6 +310,12 @@ private:
   // subscriber to get the most recent goal
   ::rclcpp::Subscription<::geometry_msgs::msg::PointStamped>::SharedPtr
       goal_sub_;
+
+  /* services */
+  ::rclcpp::Service<::multi_agent_planner_msgs::srv::StartPlanning>::SharedPtr
+      start_planning_service_;
+  ::rclcpp::Service<::multi_agent_planner_msgs::srv::StopPlanning>::SharedPtr
+      stop_planning_service_;
 
   /* planner parameters */
   // topic prefix name that we add the id to it before publishing
@@ -389,6 +414,10 @@ private:
   // create distribution to sample for packet loss
   ::std::unique_ptr<std::mt19937> gen_;
   ::std::uniform_real_distribution<> dis_;
+  // planning is active when this variable is true; set by default to true if
+  // you want the initial state to be the one in the launch file and to start
+  // planning immediately
+  bool planning_active_ = true;
 
   /* yaw control variables */
   // current yaw angle
@@ -479,7 +508,8 @@ private:
   // received trajectories of other drones
   ::std::vector<::multi_agent_planner_msgs::msg::Trajectory> traj_other_agents_;
   // received trajectories of other drones in a queue
-  ::std::vector<::multi_agent_planner_msgs::msg::Trajectory> traj_other_agents_queue_;
+  ::std::vector<::multi_agent_planner_msgs::msg::Trajectory>
+      traj_other_agents_queue_;
   // seeds used for the generation of the polyhedra
   ::std::vector<::std::vector<double>> poly_seeds_;
   // polyhedra for visualization without other agents

@@ -39,6 +39,18 @@ Agent::Agent()
   // create prefix for publishers topic name
   ::std::string topic_name = topic_name_ + "_" + ::std::to_string(id_);
 
+  // create start and stop planning service
+  start_planning_service_ =
+      create_service<::multi_agent_planner_msgs::srv::StartPlanning>(
+          "~/start_planning",
+          std::bind(&Agent::StartPlanningCallback, this, std::placeholders::_1,
+                    std::placeholders::_2));
+  stop_planning_service_ =
+      create_service<::multi_agent_planner_msgs::srv::StopPlanning>(
+          "~/stop_planning",
+          std::bind(&Agent::StopPlanningCallback, this, std::placeholders::_1,
+                    std::placeholders::_2));
+
   // create publisher to publish the full generated path
   traj_full_pub_ =
       create_publisher<::multi_agent_planner_msgs::msg::Trajectory>(
@@ -158,6 +170,14 @@ void Agent::TrajPlanningIteration() {
 
   // while ros is running, compute trajectory at a constant frequency
   while (::rclcpp::ok()) {
+    // the planning is inactive, sleep then skip to the next iteration
+    if (!planning_active_) {
+      // sleep for the planning period
+      ::std::this_thread::sleep_for(
+          ::std::chrono::milliseconds(int(traj_planning_period_ms)));
+      continue;
+    }
+
     // cpu clock start
     clock_t t_start_cpu = clock();
 
@@ -290,6 +310,15 @@ void Agent::UpdatePath() {
 
   // while ros is running, plan a path at a constant frequency
   while (::rclcpp::ok()) {
+
+    // the planning is inactive, sleep then skip to the next iteration
+    if (!planning_active_) {
+      // sleep for the planning period
+      ::std::this_thread::sleep_for(
+          ::std::chrono::milliseconds(int(10 * path_planning_period_ * 1e3)));
+      continue;
+    }
+
     // cpu clock start
     clock_t t_start_cpu = clock();
 
@@ -2449,6 +2478,40 @@ void Agent::GoalCallback(
   goal_mtx_.unlock();
 }
 
+void Agent::StartPlanningCallback(
+    const ::std::shared_ptr<
+        ::multi_agent_planner_msgs::srv::StartPlanning::Request>
+        request,
+    ::std::shared_ptr<::multi_agent_planner_msgs::srv::StartPlanning::Response>
+        response) {
+  // set current state to the initial state
+  state_curr_ = request->initial_state;
+
+  // initialize the current trajectory
+  traj_curr_.clear();
+  for (int i = 0; i < n_hor_ + 1; i++) {
+    traj_curr_.push_back(state_curr_);
+  }
+  traj_prev_ = traj_curr_;
+
+  // set planning to active
+  planning_active_ = true;
+
+  response->success = true;
+}
+
+void Agent::StopPlanningCallback(
+    const ::std::shared_ptr<
+        ::multi_agent_planner_msgs::srv::StopPlanning::Request>
+        request,
+    ::std::shared_ptr<::multi_agent_planner_msgs::srv::StopPlanning::Response>
+        response) {
+  // set planning to inactive
+  planning_active_ = false;
+
+  response->success = true;
+}
+
 void Agent::PublishVoxelGrid() {
   // copy voxel grid before reading and publishing it
   voxel_grid_mtx_.lock();
@@ -2474,7 +2537,8 @@ void Agent::PublishVoxelGrid() {
         pt.z = k * vox_size + vox_size / 2 + origin_vg[2];
         if (vg_util.GetVoxelInt(pt_i) == ENV_BUILDER_OCC) {
           cloud_occ.points.push_back(pt);
-        } else if (vg_util.GetVoxelInt(pt_i) >= ENV_BUILDER_FREE) {
+        } else if (vg_util.GetVoxelInt(pt_i) > ENV_BUILDER_FREE) {
+          // using this to only publish the potential field
           cloud_free.points.push_back(pt);
         } else if (vg_util.GetVoxelInt(pt_i) == ENV_BUILDER_UNK) {
           cloud_unk.points.push_back(pt);

@@ -37,7 +37,7 @@ def launch_setup(context, *args, **kwargs):
         'env_dyn_test_config.yaml'
     )
 
-    params_sub = [{'publish_period': 0.2},
+    params_sub = [{'publish_period': 0.1},
                   {'speed': speed},
                   {'direction': direction},
                   {'position_dyn_obst_vec': position},

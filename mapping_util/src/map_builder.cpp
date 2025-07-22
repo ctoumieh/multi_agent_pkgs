@@ -53,6 +53,8 @@ void MapBuilder::DeclareRosParameters() {
   declare_parameter("free_grid", true);
   declare_parameter("inflation_dist", 0.3);
   declare_parameter("potential_dist", 1.8);
+  declare_parameter("potential_dist_max", 3.6);
+  declare_parameter("potential_speed_max", 2.0);
   declare_parameter("potential_pow", 4.0);
   declare_parameter("fov_x", M_PI / 2);
   declare_parameter("fov_y", M_PI / 3);
@@ -69,6 +71,8 @@ void MapBuilder::InitializeRosParameters() {
   free_grid_ = get_parameter("free_grid").as_bool();
   inflation_dist_ = get_parameter("inflation_dist").as_double();
   potential_dist_ = get_parameter("potential_dist").as_double();
+  potential_dist_max_ = get_parameter("potential_dist_max").as_double();
+  potential_speed_max_ = get_parameter("potential_speed_max").as_double();
   potential_pow_ = get_parameter("potential_pow").as_double();
   fov_x_ = get_parameter("fov_x").as_double();
   fov_y_ = get_parameter("fov_y").as_double();
@@ -206,14 +210,73 @@ void MapBuilder::EnvironmentVoxelGridCallback(
 
     // inflate the unknown voxels by the inflation distance to guarantee safety
     // when computing the safe corridor;
+    auto t_start_wall = ::std::chrono::high_resolution_clock::now();
     SetUncertainToUnknown(voxel_grid);
+    auto t_end_wall = ::std::chrono::high_resolution_clock::now();
+    double uncertain_time_wall_ms =
+        ::std::chrono::duration_cast<::std::chrono::nanoseconds>(t_end_wall -
+                                                                 t_start_wall)
+            .count();
+    // convert from nano to milliseconds
+    uncertain_time_wall_ms *= 1e-6;
+    // save wall computation time
+    uncertain_comp_time_.push_back(uncertain_time_wall_ms);
 
     // inflate obstacles
+    t_start_wall = ::std::chrono::high_resolution_clock::now();
     voxel_grid.InflateObstacles(inflation_dist_);
+    t_end_wall = ::std::chrono::high_resolution_clock::now();
+    double inflate_time_wall_ms =
+        ::std::chrono::duration_cast<::std::chrono::nanoseconds>(t_end_wall -
+                                                                 t_start_wall)
+            .count();
+    // convert from nano to milliseconds
+    inflate_time_wall_ms *= 1e-6;
+    // save wall computation time
+    inflate_comp_time_.push_back(inflate_time_wall_ms);
 
     // create potential field in only free voxels (unknown voxels are kept
     // unknown)
+    // first convert obstacle array to eigen vector
+    t_start_wall = ::std::chrono::high_resolution_clock::now();
     voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
+    t_end_wall = ::std::chrono::high_resolution_clock::now();
+    double potential_field_time_wall_ms =
+        ::std::chrono::duration_cast<::std::chrono::nanoseconds>(t_end_wall -
+                                                                 t_start_wall)
+            .count();
+    // convert from nano to milliseconds
+    potential_field_time_wall_ms *= 1e-6;
+    // save wall computation time
+    potential_field_comp_time_.push_back(potential_field_time_wall_ms);
+
+    // create potential field for dynamic obstacles
+    t_start_wall = ::std::chrono::high_resolution_clock::now();
+    ::std::vector<Eigen::Vector3d> position_vec, velocity_vec, dimension_vec;
+    for (const auto &obs : vg_msg->voxel_grid.dyn_obstacles) {
+      // Convert std::array<double, 3> to Eigen::Vector3d
+      position_vec.push_back(
+          Eigen::Vector3d(obs.position[0] + origin_grid[0] - origin[0],
+                          obs.position[1] + origin_grid[1] - origin[1],
+                          obs.position[2] + origin_grid[2] - origin[2]));
+      velocity_vec.push_back(
+          Eigen::Vector3d(obs.velocity[0], obs.velocity[1], obs.velocity[2]));
+      dimension_vec.push_back(Eigen::Vector3d(
+          obs.dimension[0], obs.dimension[1], obs.dimension[2]));
+    }
+    // then create the dynamic obstacle potential field
+    voxel_grid.CreateDynamicObstaclesPotentialField(
+        position_vec, velocity_vec, dimension_vec, potential_dist_,
+        potential_dist_max_, potential_speed_max_, 50);
+    t_end_wall = ::std::chrono::high_resolution_clock::now();
+    double dyn_obst_field_time_wall_ms =
+        ::std::chrono::duration_cast<::std::chrono::nanoseconds>(t_end_wall -
+                                                                 t_start_wall)
+            .count();
+    // convert from nano to milliseconds
+    dyn_obst_field_time_wall_ms *= 1e-6;
+    // save wall computation time
+    dyn_obst_field_comp_time_.push_back(dyn_obst_field_time_wall_ms);
 
     // create the final grid message and publish it
     ::env_builder_msgs::msg::VoxelGrid vg_final_msg =
@@ -251,9 +314,9 @@ MapBuilder::MergeVoxelGrids(const ::voxel_grid_util::VoxelGrid &vg_old,
   ::Eigen::Vector3i dim = vg_final.GetDim();
   ::Eigen::Vector3d offset_double = (vg_final.GetOrigin() - vg_old.GetOrigin());
   /* ::std::cout << "vg_final origin:" << vg_final.GetOrigin().transpose() */
-              /* << ::std::endl; */
+  /* << ::std::endl; */
   /* ::std::cout << "vg_old origin:" << vg_old.GetOrigin().transpose() */
-              /* << ::std::endl; */
+  /* << ::std::endl; */
   ::Eigen::Vector3i offset_int;
   offset_int[0] = round(offset_double[0] / voxel_size);
   offset_int[1] = round(offset_double[1] / voxel_size);
@@ -641,6 +704,14 @@ void MapBuilder::OnShutdown() {
   DisplayCompTime(raycast_comp_time_);
   ::std::cout << ::std::endl << "merge: ";
   DisplayCompTime(merge_comp_time_);
+  ::std::cout << ::std::endl << "uncertain: ";
+  DisplayCompTime(uncertain_comp_time_);
+  ::std::cout << ::std::endl << "inflate: ";
+  DisplayCompTime(inflate_comp_time_);
+  ::std::cout << ::std::endl << "potential field: ";
+  DisplayCompTime(potential_field_comp_time_);
+  ::std::cout << ::std::endl << "dynamic obstacles field: ";
+  DisplayCompTime(dyn_obst_field_comp_time_);
   ::std::cout << ::std::endl << "total: ";
   DisplayCompTime(tot_comp_time_);
 }

@@ -36,6 +36,9 @@ def launch_nodes(context, *args, **kwargs):
 
     # Optional flags
     voxel_grid_range = [20.0, 20.0, 12.0]
+    potential_dist = 1.2
+    potential_dist_max = 1.2
+    potential_speed_max = 2.0
     use_mapping_util = True
     free_grid = False
     save_stats = False
@@ -52,6 +55,9 @@ def launch_nodes(context, *args, **kwargs):
                 config_mapper,
                 {'id': rob_id},
                 {'voxel_grid_range': voxel_grid_range},
+                {'potential_dist': potential_dist},
+                {'potential_dist_max': potential_dist_max},
+                {'potential_speed_max': potential_speed_max},
                 {'free_grid': free_grid}
             ],
             # prefix=['xterm -fa default -fs 10 -xrm "XTerm*selectToClipboard: true" -e gdb -ex run --args'],

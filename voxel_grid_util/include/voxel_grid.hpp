@@ -168,6 +168,16 @@ public:
   // create potential field
   void CreatePotentialField(double potential_dist, int pow);
 
+  // create potential field for dynamic obstacles, the obstacles are in the
+  // voxel frame but with real coordinates (we have to divide by the voxel size
+  // to get integer coordinates)
+  void CreateDynamicObstaclesPotentialField(
+      const std::vector<Eigen::Vector3d> position_vec,
+      const std::vector<Eigen::Vector3d> velocity_vec,
+      const std::vector<Eigen::Vector3d> dimension_vec,
+      const double min_pot_distance, const double max_pot_distance,
+      const double max_speed, const voxel_data_type pot_value);
+
   // create mask to get the voxels whithin a certain distance of a center voxel
   ::std::vector<::std::pair<::Eigen::Vector3i, int8_t>>
   CreateMask(double mask_dist, double pow);
