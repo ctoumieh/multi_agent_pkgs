@@ -417,7 +417,7 @@ private:
   // planning is active when this variable is true; set by default to true if
   // you want the initial state to be the one in the launch file and to start
   // planning immediately
-  bool planning_active_ = true;
+  bool planning_active_ = false;
 
   /* yaw control variables */
   // current yaw angle
