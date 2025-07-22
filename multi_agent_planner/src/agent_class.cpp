@@ -2335,6 +2335,7 @@ void Agent::DeclareRosParameters() {
   declare_parameter("dmp_n_it", 1);
   declare_parameter("path_planning_period", 0.1);
   declare_parameter("remove_corners", false);
+  declare_parameter("planning_active", true);
 }
 
 void Agent::InitializeRosParameters() {
@@ -2396,6 +2397,7 @@ void Agent::InitializeRosParameters() {
   dmp_n_it_ = get_parameter("dmp_n_it").as_int();
   path_planning_period_ = get_parameter("path_planning_period").as_double();
   remove_corners_ = get_parameter("remove_corners").as_bool();
+  planning_active_ = get_parameter("planning_active").as_bool();
 }
 
 void Agent::VoxelGridResponseCallback(

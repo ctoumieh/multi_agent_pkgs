@@ -42,6 +42,7 @@ def launch_nodes(context, *args, **kwargs):
     use_mapping_util = True
     free_grid = False
     save_stats = False
+    planner_active = False
 
     nodes = []
 
@@ -79,6 +80,7 @@ def launch_nodes(context, *args, **kwargs):
             {'id': rob_id},
             {'goal': goal_position},
             {'use_mapping_util': use_mapping_util},
+            {'planner_active': planner_active},
             {'save_stats': save_stats}
         ],
         # prefix=['xterm -fa default -fs 10 -xrm "XTerm*selectToClipboard: true" -e gdb -ex run --args'],
