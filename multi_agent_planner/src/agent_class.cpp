@@ -737,7 +737,7 @@ void Agent::PublishTrajectory() {
     // build the trajectory message
     for (int i = 0; i <= n_hor_; i++) {
       ::geometry_msgs::msg::PoseStamped pose_stamped;
-      pose_stamped.frame_id = world_frame_;
+      pose_stamped.header.frame_id = world_frame_;
       pose_stamped.pose.position.x = traj_curr_[i][0];
       pose_stamped.pose.position.y = traj_curr_[i][1];
       pose_stamped.pose.position.z = traj_curr_[i][2];
@@ -758,14 +758,14 @@ void Agent::PublishPath() {
   ::std::vector<::std::vector<double>> path_curr = path_curr_;
   path_mtx_.unlock();
 
-  // set the time stamp and the frame
+  // set the time stamp and the frame`
   path_msg.header.stamp = now();
   path_msg.header.frame_id = world_frame_;
 
   // build the trajectory message
   for (int i = 0; i < int(path_curr.size()); i++) {
     ::geometry_msgs::msg::PoseStamped pose_stamped;
-    pose_stamped.frame_id = world_frame_;
+    pose_stamped.header.frame_id = world_frame_;
     pose_stamped.pose.position.x = path_curr[i][0];
     pose_stamped.pose.position.y = path_curr[i][1];
     pose_stamped.pose.position.z = path_curr[i][2];
@@ -787,7 +787,7 @@ void Agent::PublishTrajectoryHistory() {
   // build the trajectory message
   for (int i = 0; i < int(state_hist_.size() - 1); i++) {
     ::geometry_msgs::msg::PoseStamped pose_stamped;
-    pose_stamped.frame_id = world_frame_;
+    pose_stamped.header.frame_id = world_frame_;
     pose_stamped.pose.position.x = state_hist_[i][0];
     pose_stamped.pose.position.y = state_hist_[i][1];
     pose_stamped.pose.position.z = state_hist_[i][2];
@@ -814,7 +814,7 @@ void Agent::PublishReferencePath() {
   // build the trajectory message
   for (int i = 0; i < int(traj_ref_curr.size()); i++) {
     ::geometry_msgs::msg::PoseStamped pose_stamped;
-    pose_stamped.frame_id = world_frame_;
+    pose_stamped.header.frame_id = world_frame_;
 
     pose_stamped.pose.position.x = traj_ref_curr[i][0];
     pose_stamped.pose.position.y = traj_ref_curr[i][1];
