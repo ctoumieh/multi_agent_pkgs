@@ -1,6 +1,23 @@
 #ifndef MULTI_AGENT_PLANNER_AGENT_CLASS_H_
 #define MULTI_AGENT_PLANNER_AGENT_CLASS_H_
 
+#include <decomp_geometry/polyhedron.h>
+#include <jps_planner/distance_map_planner/distance_map_planner.h>
+#include <jps_planner/jps_planner/jps_planner.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pthread.h>
+
+#include <chrono>
+#include <cmath>
+#include <deque>
+#include <fstream>
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <mutex>
+#include <nav_msgs/msg/path.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+
 #include "convex_decomp.hpp"
 #include "decomp_ros_msgs/msg/polyhedron_array.hpp"
 #include "decomp_ros_utils/data_ros_utils.h"
@@ -11,39 +28,22 @@
 #include "global_planner.hpp"
 #include "gurobi_c++.h"
 #include "mapping_util/map_builder.hpp"
+#include "multi_agent_planner_msgs/msg/start_planning.hpp"
 #include "multi_agent_planner_msgs/msg/state.hpp"
+#include "multi_agent_planner_msgs/msg/stop_planning.hpp"
 #include "multi_agent_planner_msgs/msg/trajectory.hpp"
-#include "multi_agent_planner_msgs/srv/start_planning.hpp"
-#include "multi_agent_planner_msgs/srv/stop_planning.hpp"
 #include "path_tools.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 #include "voxel_grid.hpp"
 
-#include <decomp_geometry/polyhedron.h>
-#include <geometry_msgs/msg/point_stamped.hpp>
-#include <geometry_msgs/msg/pose_stamped.hpp>
-#include <jps_planner/distance_map_planner/distance_map_planner.h>
-#include <jps_planner/jps_planner/jps_planner.h>
-#include <nav_msgs/msg/path.hpp>
-#include <pcl_conversions/pcl_conversions.h>
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <visualization_msgs/msg/marker.hpp>
-
-#include <chrono>
-#include <cmath>
-#include <deque>
-#include <fstream>
-#include <mutex>
-#include <pthread.h>
-
 namespace multi_agent_planner {
 class Agent : public ::rclcpp::Node {
-public:
+ public:
   // constructor
   Agent();
 
-private:
+ private:
   /*--------------------- class methods ---------------------*/
   // declare ros parameters
   void DeclareRosParameters();
@@ -127,17 +127,17 @@ private:
 
   // remove points that are the middle of two segments that have an acute angle
   // between them since they are redundant
-  ::std::vector<::std::vector<double>>
-  RemoveZigZagSegments(::std::vector<::std::vector<double>> path);
+  ::std::vector<::std::vector<double>> RemoveZigZagSegments(
+      ::std::vector<::std::vector<double>> path);
 
   // sample path using path_vel and n_hor_
-  ::std::vector<std::vector<double>>
-  SamplePath(::std::vector<::std::vector<double>> &path);
+  ::std::vector<std::vector<double>> SamplePath(
+      ::std::vector<::std::vector<double>> &path);
 
   // keep only the points that are in the free voxels for the reference
   // trajectory
-  ::std::vector<::std::vector<double>>
-  KeepOnlyFreeReference(::std::vector<::std::vector<double>> &traj_ref);
+  ::std::vector<::std::vector<double>> KeepOnlyFreeReference(
+      ::std::vector<::std::vector<double>> &traj_ref);
 
   // compute the path sampling velocity based on path and the voxel
   // grid/potential field; if the path is close to the obstacles, we wanna
@@ -149,18 +149,16 @@ private:
   double GetVelocityLimit(double occ_val, double dist_start);
 
   // add hyperplane to a safe corridor
-  ::std::vector<LinearConstraint3D>
-  AddHyperplane(::std::vector<LinearConstraint3D> &poly_const_vec,
-                Hyperplane3D &hp);
+  ::std::vector<LinearConstraint3D> AddHyperplane(
+      ::std::vector<LinearConstraint3D> &poly_const_vec, Hyperplane3D &hp);
 
   // generate guroby polyhedron constraints from a polyhedron
-  ::std::vector<GRBLinExpr>
-  GetGurobiPolyhedronConstraints(LinearConstraint3D &poly, GRBLinExpr *x);
+  ::std::vector<GRBLinExpr> GetGurobiPolyhedronConstraints(
+      LinearConstraint3D &poly, GRBLinExpr *x);
 
   // get intermediate goal
-  ::std::vector<double>
-  GetIntermediateGoal(::std::vector<double> &goal,
-                      ::voxel_grid_util::VoxelGrid &voxel_grid);
+  ::std::vector<double> GetIntermediateGoal(
+      ::std::vector<double> &goal, ::voxel_grid_util::VoxelGrid &voxel_grid);
 
   // clear the borders of the voxel grid
   void ClearBoundary(::voxel_grid_util::VoxelGrid &voxel_grid);
@@ -226,25 +224,17 @@ private:
       const ::env_builder_msgs::msg::VoxelGridStamped::SharedPtr vg_msg);
 
   // current goal subscriber callback
-  void
-  GoalCallback(const ::geometry_msgs::msg::PointStamped::SharedPtr goal_msg);
+  void GoalCallback(
+      const ::geometry_msgs::msg::PointStamped::SharedPtr goal_msg);
 
   // start planning callback
   void StartPlanningCallback(
-      const ::std::shared_ptr<
-          ::multi_agent_planner_msgs::srv::StartPlanning::Request>
-          request,
-      ::std::shared_ptr<
-          ::multi_agent_planner_msgs::srv::StartPlanning::Response>
-          response);
+      const ::multi_agent_planner_msgs::msg::StartPlanning::SharedPtr
+          start_planning_msg);
 
-  // stop planning callback
   void StopPlanningCallback(
-      const ::std::shared_ptr<
-          ::multi_agent_planner_msgs::srv::StopPlanning::Request>
-          request,
-      ::std::shared_ptr<::multi_agent_planner_msgs::srv::StopPlanning::Response>
-          response);
+      const ::multi_agent_planner_msgs::msg::StopPlanning::SharedPtr
+          stop_planning_msg);
 
   // function to execute on the shutdown of the node to save computation time
   // statistics
@@ -311,11 +301,10 @@ private:
   ::rclcpp::Subscription<::geometry_msgs::msg::PointStamped>::SharedPtr
       goal_sub_;
 
-  /* services */
-  ::rclcpp::Service<::multi_agent_planner_msgs::srv::StartPlanning>::SharedPtr
-      start_planning_service_;
-  ::rclcpp::Service<::multi_agent_planner_msgs::srv::StopPlanning>::SharedPtr
-      stop_planning_service_;
+  ::rclcpp::Subscription<::multi_agent_planner_msgs::msg::StartPlanning>::
+      SharedPtr start_planning_sub_;
+  ::rclcpp::Subscription<::multi_agent_planner_msgs::msg::StopPlanning>::
+      SharedPtr stop_planning_sub_;
 
   /* planner parameters */
   // topic prefix name that we add the id to it before publishing
@@ -578,6 +567,6 @@ private:
   // milliseconds
   ::std::vector<::std::vector<double>> com_latency_ms_;
 };
-} // namespace multi_agent_planner
+}  // namespace multi_agent_planner
 
-#endif // MULTI_AGENT_PLANNER_AGENT_CLASS_H_
+#endif  // MULTI_AGENT_PLANNER_AGENT_CLASS_H_

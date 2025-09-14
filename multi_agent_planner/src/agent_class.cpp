@@ -39,18 +39,6 @@ Agent::Agent()
   // create prefix for publishers topic name
   ::std::string topic_name = topic_name_ + "_" + ::std::to_string(id_);
 
-  // create start and stop planning service
-  start_planning_service_ =
-      create_service<::multi_agent_planner_msgs::srv::StartPlanning>(
-          "~/start_planning",
-          std::bind(&Agent::StartPlanningCallback, this, std::placeholders::_1,
-                    std::placeholders::_2));
-  stop_planning_service_ =
-      create_service<::multi_agent_planner_msgs::srv::StopPlanning>(
-          "~/stop_planning",
-          std::bind(&Agent::StopPlanningCallback, this, std::placeholders::_1,
-                    std::placeholders::_2));
-
   // create publisher to publish the full generated path
   traj_full_pub_ =
       create_publisher<::multi_agent_planner_msgs::msg::Trajectory>(
@@ -121,6 +109,21 @@ Agent::Agent()
       goal_sub_topic, 10,
       ::std::bind(&Agent::GoalCallback, this, ::std::placeholders::_1));
 
+  ::std::string start_planning_topic =
+      "agent_" + ::std::to_string(id_) + "/start_planning";
+  start_planning_sub_ =
+      create_subscription<::multi_agent_planner_msgs::msg::StartPlanning>(
+          start_planning_topic, 10,
+          ::std::bind(&Agent::StartPlanningCallback, this,
+                      ::std::placeholders::_1));
+
+  ::std::string stop_planning_topic =
+      "agent_" + ::std::to_string(id_) + "/stop_planning";
+  stop_planning_sub_ =
+      create_subscription<::multi_agent_planner_msgs::msg::StopPlanning>(
+          stop_planning_topic, 10,
+          ::std::bind(&Agent::StopPlanningCallback, this,
+                      ::std::placeholders::_1));
   // launch path planning thread
   path_planning_thread_ = ::std::thread(&Agent::UpdatePath, this);
 
@@ -2478,13 +2481,12 @@ void Agent::GoalCallback(
 }
 
 void Agent::StartPlanningCallback(
-    const ::std::shared_ptr<
-        ::multi_agent_planner_msgs::srv::StartPlanning::Request>
-        request,
-    ::std::shared_ptr<::multi_agent_planner_msgs::srv::StartPlanning::Response>
-        response) {
+    const ::multi_agent_planner_msgs::msg::StartPlanning::SharedPtr
+        start_planning_msg) {
   // set current state to the initial state
-  state_curr_ = request->initial_state;
+  state_curr_ = start_planning_msg->initial_state;
+
+  RCLCPP_INFO(this->get_logger(), "Starting planning");
 
   // initialize the current trajectory
   traj_curr_.clear();
@@ -2495,20 +2497,14 @@ void Agent::StartPlanningCallback(
 
   // set planning to active
   planning_active_ = true;
-
-  response->success = true;
 }
 
 void Agent::StopPlanningCallback(
-    const ::std::shared_ptr<
-        ::multi_agent_planner_msgs::srv::StopPlanning::Request>
-        request,
-    ::std::shared_ptr<::multi_agent_planner_msgs::srv::StopPlanning::Response>
-        response) {
+    const ::multi_agent_planner_msgs::msg::StopPlanning::SharedPtr
+        stop_planning_msg) {
+  RCLCPP_INFO(this->get_logger(), "Stopping planning");
   // set planning to inactive
   planning_active_ = false;
-
-  response->success = true;
 }
 
 void Agent::PublishVoxelGrid() {
