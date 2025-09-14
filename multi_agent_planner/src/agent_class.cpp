@@ -2334,7 +2334,7 @@ void Agent::DeclareRosParameters() {
   declare_parameter("dmp_n_it", 1);
   declare_parameter("path_planning_period", 0.1);
   declare_parameter("remove_corners", false);
-  declare_parameter("planning_active", true);
+  declare_parameter("planning_active", false);
 }
 
 void Agent::InitializeRosParameters() {
