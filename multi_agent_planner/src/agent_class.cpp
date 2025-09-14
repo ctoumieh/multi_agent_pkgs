@@ -2485,6 +2485,7 @@ void Agent::StartPlanningCallback(
         start_planning_msg) {
   // set current state to the initial state
   state_curr_ = start_planning_msg->initial_state;
+  reset_path_ = true;
 
   RCLCPP_INFO(this->get_logger(), "Starting planning");
 
