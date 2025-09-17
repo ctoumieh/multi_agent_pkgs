@@ -3,76 +3,105 @@
 namespace multi_agent_planner {
 Agent::Agent()
     : ::rclcpp::Node("agent_node"), env_(true), model_(InitializeGurobi(env_)) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::Agent");
+
   // declare connection parameters
+  RCLCPP_DEBUG(this->get_logger(), "Declaring ROS parameters...");
   DeclareRosParameters();
+  RCLCPP_DEBUG(this->get_logger(), "ROS parameters declared successfully");
 
   // get parameters from file
+  RCLCPP_DEBUG(this->get_logger(), "Initializing ROS parameters...");
   InitializeRosParameters();
+  RCLCPP_DEBUG(this->get_logger(), "ROS parameters initialized successfully");
 
   // initialize MPC/MIQP parameters
+  RCLCPP_DEBUG(this->get_logger(), "Initializing planner parameters...");
   InitializePlannerParameters();
+  RCLCPP_DEBUG(this->get_logger(), "Planner parameters initialized successfully");
 
   // intialize random variables
+  RCLCPP_DEBUG(this->get_logger(), "Initializing random variables with id: %d", id_);
   gen_ = ::std::make_unique<std::mt19937>(id_);
   dis_ = ::std::uniform_real_distribution<>(0.0, 1.0);
+  RCLCPP_DEBUG(this->get_logger(), "Random variables initialized successfully");
 
   // set initial yaw angle to 0
+  RCLCPP_DEBUG(this->get_logger(), "Setting initial yaw angle to 0");
   yaw_ = 0;
 
   // set up a callback to execute code on shutdown
+  RCLCPP_DEBUG(this->get_logger(), "Setting up shutdown callback");
   on_shutdown(::std::bind(&Agent::OnShutdown, this));
 
   // initialize trajectory mutexes
+  RCLCPP_DEBUG(this->get_logger(), "Initializing trajectory mutexes for %d robots", n_rob_);
   ::std::vector<::std::mutex> mutex_vec(n_rob_);
   traj_other_mtx_.swap(mutex_vec);
 
   // initialize trajectories of other agents
+  RCLCPP_DEBUG(this->get_logger(), "Initializing trajectories of other agents");
   traj_other_agents_.resize(n_rob_);
   traj_other_agents_queue_.resize(n_rob_);
 
   // initialize communication latency of other agents
+  RCLCPP_DEBUG(this->get_logger(), "Initializing communication latency array");
   com_latency_ms_.resize(n_rob_);
 
   // create gurobi model
+  RCLCPP_DEBUG(this->get_logger(), "Creating Gurobi model...");
   CreateGurobiModel();
+  RCLCPP_DEBUG(this->get_logger(), "Gurobi model created successfully");
 
   // create prefix for publishers topic name
   ::std::string topic_name = topic_name_ + "_" + ::std::to_string(id_);
+  RCLCPP_DEBUG(this->get_logger(), "Creating publishers with topic prefix: %s", topic_name.c_str());
 
   // create publisher to publish the full generated path
+  RCLCPP_DEBUG(this->get_logger(), "Creating trajectory full publisher...");
   traj_full_pub_ =
       create_publisher<::multi_agent_planner_msgs::msg::Trajectory>(
           topic_name + "/traj_full", 10);
 
   // create publisher to publish the generated trajectory
+  RCLCPP_DEBUG(this->get_logger(), "Creating trajectory publisher...");
   traj_pub_ = create_publisher<::nav_msgs::msg::Path>(topic_name + "/traj", 10);
 
   // create publisher to publish the reference trajectory
+  RCLCPP_DEBUG(this->get_logger(), "Creating reference trajectory publisher...");
   traj_ref_pub_ =
       create_publisher<::nav_msgs::msg::Path>(topic_name + "/traj_ref", 10);
 
   // create publisher to publish the generated path
+  RCLCPP_DEBUG(this->get_logger(), "Creating path publisher...");
   path_pub_ = create_publisher<::nav_msgs::msg::Path>(topic_name + "/path", 10);
 
   // create publisher to publish the traversed trajectory so far
+  RCLCPP_DEBUG(this->get_logger(), "Creating trajectory history publisher...");
   traj_hist_pub_ =
       create_publisher<::nav_msgs::msg::Path>(topic_name + "/traj_hist", 10);
 
   // create publisher to publish the polyhedra
+  RCLCPP_DEBUG(this->get_logger(), "Creating polyhedra publisher...");
   poly_pub_ = create_publisher<::decomp_ros_msgs::msg::PolyhedronArray>(
       topic_name + "/polyhedra", 10);
 
   // create publisher to publish the seeds of the polyhedra
+  RCLCPP_DEBUG(this->get_logger(), "Creating seeds publisher...");
   seeds_pub_ = create_publisher<::sensor_msgs::msg::PointCloud2>(
       topic_name + "/seeds", 10);
 
   // create publisher to publish the current position
+  RCLCPP_DEBUG(this->get_logger(), "Creating position publisher...");
   pos_pub_ = create_publisher<::visualization_msgs::msg::Marker>(
       topic_name + "/position", 10);
+  RCLCPP_DEBUG(this->get_logger(), "Creating TF broadcaster...");
   tf_broadcaster_ = ::std::make_shared<::tf2_ros::TransformBroadcaster>(this);
 
   // create subscriber vector to other agents
+  RCLCPP_DEBUG(this->get_logger(), "Creating trajectory subscriber vector...");
   CreateTrajectorySubsriberVector();
+  RCLCPP_DEBUG(this->get_logger(), "Trajectory subscriber vector created successfully");
 
   // initialize voxel grid publishers
   voxel_grid_occ_pub_ = create_publisher<::sensor_msgs::msg::PointCloud2>(
@@ -109,6 +138,7 @@ Agent::Agent()
       goal_sub_topic, 10,
       ::std::bind(&Agent::GoalCallback, this, ::std::placeholders::_1));
 
+  RCLCPP_DEBUG(this->get_logger(), "Creating start planning subscriber...");
   ::std::string start_planning_topic =
       "agent_" + ::std::to_string(id_) + "/start_planning";
   start_planning_sub_ =
@@ -117,6 +147,7 @@ Agent::Agent()
           ::std::bind(&Agent::StartPlanningCallback, this,
                       ::std::placeholders::_1));
 
+  RCLCPP_DEBUG(this->get_logger(), "Creating stop planning subscriber...");
   ::std::string stop_planning_topic =
       "agent_" + ::std::to_string(id_) + "/stop_planning";
   stop_planning_sub_ =
@@ -124,19 +155,29 @@ Agent::Agent()
           stop_planning_topic, 10,
           ::std::bind(&Agent::StopPlanningCallback, this,
                       ::std::placeholders::_1));
+
   // launch path planning thread
+  RCLCPP_DEBUG(this->get_logger(), "Launching path planning thread...");
   path_planning_thread_ = ::std::thread(&Agent::UpdatePath, this);
+  RCLCPP_DEBUG(this->get_logger(), "Path planning thread launched successfully");
 
   // launch trajectory planning (MIQP) thread
+  RCLCPP_DEBUG(this->get_logger(), "Launching trajectory planning thread...");
   traj_planning_thread_ = ::std::thread(&Agent::TrajPlanningIteration, this);
+  RCLCPP_DEBUG(this->get_logger(), "Trajectory planning thread launched successfully");
+
+  RCLCPP_DEBUG(this->get_logger(), "Agent constructor completed successfully");
 }
 
 void Agent::TrajPlanningIteration() {
+  RCLCPP_DEBUG(this->get_logger(), "TrajPlanningIteration thread started");
   // Set the thread priority to highest
+  RCLCPP_DEBUG(this->get_logger(), "Setting thread priority to highest...");
   struct sched_param param;
   param.sched_priority = sched_get_priority_max(SCHED_FIFO);
   int err_code = pthread_setschedparam(pthread_self(), SCHED_FIFO, &param);
   if (err_code == 0) {
+    RCLCPP_DEBUG(this->get_logger(), "Thread priority set to highest successfully");
     ::std::cout << "Thread priority set to highest for the "
                    "TrajPlanningIteration thread."
                 << ::std::endl;
@@ -300,6 +341,7 @@ void Agent::TrajPlanningIteration() {
 }
 
 void Agent::UpdatePath() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::UpdatePath");
   // while no voxel grid has been received, wait for the path planning period
   while (!voxel_grid_ready_) {
     if (planner_verbose_) {
@@ -503,6 +545,7 @@ bool Agent::GetPathNew(::std::vector<double> &start_arg,
                        ::std::vector<double> &goal_arg,
                        ::voxel_grid_util::VoxelGrid &voxel_grid,
                        ::std::vector<::std::vector<double>> &path_out) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GetPathNew");
   // define boolean to check if path is valid
   bool valid_path = true;
 
@@ -524,6 +567,7 @@ bool Agent::GetPath(::std::vector<double> &start_arg,
                     ::std::vector<double> &goal_arg,
                     ::voxel_grid_util::VoxelGrid &vg_util,
                     ::std::vector<::std::vector<double>> &path_out) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GetPath");
   // set the namespace
   using namespace JPS;
 
@@ -613,6 +657,7 @@ bool Agent::GetPath(::std::vector<double> &start_arg,
 }
 
 void Agent::CheckReferenceTrajIncrement() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::CheckReferenceTrajIncrement");
   // check if the progress is positive and the distance to the trajectory is
   // smaller than a given threshold to increment the reference trajectory
   increment_traj_ref_ = false;
@@ -654,6 +699,7 @@ void Agent::CheckReferenceTrajIncrement() {
 }
 
 void Agent::CreateTrajectorySubsriberVector() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::CreateTrajectorySubsriberVector");
   // resize the vector to the number of robots
   traj_other_sub_vec_.resize(n_rob_);
 
@@ -675,6 +721,7 @@ void Agent::CreateTrajectorySubsriberVector() {
 void Agent::TrajectoryOtherAgentsCallback(
     const ::multi_agent_planner_msgs::msg::Trajectory::SharedPtr &msg,
     const int &id) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::TrajectoryOtherAgentsCallback");
   double random_value = 100 * dis_(*gen_);
   if (random_value > packet_loss_percentage_) {
     // lock mutex and save the trajectory message
@@ -692,6 +739,7 @@ void Agent::TrajectoryOtherAgentsCallback(
 }
 
 void Agent::PublishTrajectoryFull() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::PublishTrajectoryFull");
   // create trajectory message
   ::multi_agent_planner_msgs::msg::Trajectory traj_msg;
 
@@ -729,6 +777,7 @@ void Agent::PublishTrajectoryFull() {
 }
 
 void Agent::PublishTrajectory() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::PublishTrajectory");
   if (traj_curr_.size() > 0) {
     // create path message
     ::nav_msgs::msg::Path traj_msg;
@@ -753,6 +802,7 @@ void Agent::PublishTrajectory() {
 }
 
 void Agent::PublishPath() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::PublishPath");
   // create path message
   ::nav_msgs::msg::Path path_msg;
 
@@ -780,6 +830,7 @@ void Agent::PublishPath() {
 }
 
 void Agent::PublishTrajectoryHistory() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::PublishTrajectoryHistory");
   // create path message
   ::nav_msgs::msg::Path path_msg;
 
@@ -802,6 +853,7 @@ void Agent::PublishTrajectoryHistory() {
 }
 
 void Agent::PublishReferencePath() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::PublishReferencePath");
   // create reference trajectory message
   ::nav_msgs::msg::Path traj_ref_msg;
 
@@ -830,6 +882,7 @@ void Agent::PublishReferencePath() {
 }
 
 void Agent::PublishCurrentPosition() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::PublishCurrentPosition");
   ::std::vector<double> state_curr;
   // if we started the trajectory generation, use it for state_curr
   if (traj_curr_.size() > 0) {
@@ -885,6 +938,7 @@ void Agent::PublishCurrentPosition() {
 }
 
 void Agent::PublishPolyhedraSeeds() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::PublishPolyhedraSeeds");
   // define pointcloud that contains seeds
   ::pcl::PointCloud<::pcl::PointXYZ> seed_cloud;
 
@@ -905,6 +959,7 @@ void Agent::PublishPolyhedraSeeds() {
 }
 
 void Agent::PublishPolyhedra() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::PublishPolyhedra");
   // create polyhedra message
   ::decomp_ros_msgs::msg::PolyhedronArray poly_msg =
       ::DecompROS::polyhedron_array_to_ros(poly_vec_);
@@ -913,6 +968,7 @@ void Agent::PublishPolyhedra() {
 }
 
 void Agent::SolveOptimizationProblem() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::SolveOptimizationProblem");
   // start clock
   clock_t t_start = clock();
 
@@ -1080,6 +1136,7 @@ void Agent::SolveOptimizationProblem() {
 }
 
 void Agent::ComputeYawAngle() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::ComputeYawAngle");
   // first get the direction as the difference between the current position and
   // the last reference point
   ::Eigen::Vector3d yaw_vec(traj_ref_curr_[yaw_idx_][0] - state_curr_[0],
@@ -1107,6 +1164,7 @@ void Agent::ComputeYawAngle() {
 }
 
 ::Eigen::Quaterniond Agent::ComputeAttitude() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::ComputeAttitude");
   // get the thrust vector from the current acceleration + gravity (we can
   // include drag forces)
   ::Eigen::Vector3d acc(state_curr_[6], state_curr_[7], state_curr_[8]);
@@ -1126,6 +1184,7 @@ void Agent::ComputeYawAngle() {
 }
 
 void Agent::UpdateCurrentTrajectory() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::UpdateCurrentTrajectory");
   double comp_time = comp_time_tot_wall_.back();
   // if the computation time smaller than the period time,
   // keep currently computed traj_curr_ and update traj_prev_
@@ -1148,6 +1207,7 @@ void Agent::UpdateCurrentTrajectory() {
 
 ::std::vector<GRBLinExpr> Agent::GetGurobiPolyhedronConstraints(
     LinearConstraint3D &poly, GRBLinExpr *x) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GetGurobiPolyhedronConstraints");
   ::std::vector<GRBLinExpr> polyhedron_gurobi_const;
   auto A = poly.A_;
   auto b = poly.b_;
@@ -1162,6 +1222,7 @@ void Agent::UpdateCurrentTrajectory() {
 }
 
 void Agent::GenerateTimeAwareSafeCorridor() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GenerateTimeAwareSafeCorridor");
   // start clock
   clock_t t_start = clock();
 
@@ -1280,6 +1341,7 @@ void Agent::GenerateTimeAwareSafeCorridor() {
 
 ::std::vector<LinearConstraint3D> Agent::AddHyperplane(
     ::std::vector<LinearConstraint3D> &poly_const_vec, Hyperplane3D &hp) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::AddHyperplane");
   ::std::vector<LinearConstraint3D> poly_const_tmp;
   for (auto &poly_i : poly_const_vec) {
     auto A_ = poly_i.A_;
@@ -1297,6 +1359,7 @@ void Agent::GenerateTimeAwareSafeCorridor() {
 }
 
 void Agent::CheckOthersTrajectories() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::CheckOthersTrajectories");
   skip_planning_ = false;
   double planning_start_time = planning_start_time_hist_.back();
   for (int i = 0; i < n_rob_; i++) {
@@ -1327,6 +1390,7 @@ void Agent::CheckOthersTrajectories() {
 }
 
 void Agent::GenerateSafeCorridor() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GenerateSafeCorridor");
   // start clock
   clock_t t_start = clock();
 
@@ -1540,6 +1604,7 @@ void Agent::GenerateSafeCorridor() {
 }
 
 void Agent::GenerateReferenceTrajectory() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GenerateReferenceTrajectory");
   // get reference path
   path_mtx_.lock();
   ::std::vector<::std::vector<double>> path_curr = path_curr_;
@@ -1647,6 +1712,7 @@ void Agent::GenerateReferenceTrajectory() {
 
 ::std::vector<::std::vector<double>> Agent::RemoveZigZagSegments(
     ::std::vector<::std::vector<double>> path) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::RemoveZigZagSegments");
   // get voxel grid to check if line is clear when removing zigzags
   voxel_grid_mtx_.lock();
   ::voxel_grid_util::VoxelGrid vg_util = voxel_grid_;
@@ -1683,6 +1749,7 @@ void Agent::GenerateReferenceTrajectory() {
 
 ::std::vector<std::vector<double>> Agent::SamplePath(
     ::std::vector<::std::vector<double>> &path) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::SamplePath");
   // create empty reference traj and add the first point to it
   ::std::vector<::std::vector<double>> traj_ref;
 
@@ -1757,6 +1824,7 @@ void Agent::GenerateReferenceTrajectory() {
 
 ::std::vector<::std::vector<double>> Agent::KeepOnlyFreeReference(
     ::std::vector<::std::vector<double>> &traj_ref) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::KeepOnlyFreeReference");
   // get the latest version of the voxel grid
   voxel_grid_mtx_.lock();
   ::voxel_grid_util::VoxelGrid vg_util = voxel_grid_;
@@ -1786,6 +1854,7 @@ void Agent::GenerateReferenceTrajectory() {
 }
 
 double Agent::ComputePathVelocity(::std::vector<::std::vector<double>> &path) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::ComputePathVelocity");
   // define path velocity
   double path_vel = path_vel_max_;
 
@@ -1893,6 +1962,7 @@ double Agent::ComputePathVelocity(::std::vector<::std::vector<double>> &path) {
 }
 
 double Agent::GetVelocityLimit(double occ_val, double dist_start) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GetVelocityLimit");
   // compute linear factor
   if (occ_val < 0) occ_val = 0;
   if (occ_val > 100) occ_val = 100;
@@ -1905,6 +1975,7 @@ double Agent::GetVelocityLimit(double occ_val, double dist_start) {
 }
 
 void Agent::ClearBoundary(::voxel_grid_util::VoxelGrid &voxel_grid) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::ClearBoundary");
   ::Eigen::Vector3i dim = voxel_grid.GetDim();
   int x_max = dim[0] - 1;
   int y_max = dim[1] - 1;
@@ -1943,6 +2014,7 @@ void Agent::ClearBoundary(::voxel_grid_util::VoxelGrid &voxel_grid) {
 
 double Agent::GetDistanceSquared(::std::vector<double> &p1,
                                  ::std::vector<double> &p2) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GetDistanceSquared");
   double distance = (p1[0] - p2[0]) * (p1[0] - p2[0]) +
                     (p1[1] - p2[1]) * (p1[1] - p2[1]) +
                     (p1[2] - p2[2]) * (p1[2] - p2[2]);
@@ -1951,6 +2023,7 @@ double Agent::GetDistanceSquared(::std::vector<double> &p1,
 
 bool Agent::IsOnSegment(::std::vector<double> &pt, ::std::vector<double> &s_1,
                         ::std::vector<double> &s_2) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::IsOnSegment");
   // compute distances between all points
   double dist_pt_s_1 = ::std::sqrt(GetDistanceSquared(pt, s_1));
   double dist_pt_s_2 = ::std::sqrt(GetDistanceSquared(pt, s_2));
@@ -1973,11 +2046,13 @@ bool Agent::IsOnSegment(::std::vector<double> &pt, ::std::vector<double> &s_1,
 
 double Agent::DotProduct(::std::vector<double> &v_1,
                          ::std::vector<double> &v_2) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::DotProduct");
   return v_1[0] * v_2[0] + v_1[1] * v_2[1] + v_1[2] * v_2[2];
 }
 
 ::std::vector<double> Agent::GetIntermediateGoal(
     ::std::vector<double> &goal, ::voxel_grid_util::VoxelGrid &voxel_grid) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GetIntermediateGoal");
   // get goal position in grid frame
   ::Eigen::Vector3d goal_grid_frame;
   ::Eigen::Vector3d origin = voxel_grid.GetOrigin();
@@ -2029,6 +2104,7 @@ double Agent::DotProduct(::std::vector<double> &v_1,
 
 void Agent::SaveAndDisplayCompTime(::std::vector<double> &comp_time,
                                    ::std::string &filename) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::SaveAndDisplayCompTime");
   if (save_stats_) {
     // save file
     ::std::ofstream myfile;
@@ -2059,6 +2135,7 @@ void Agent::SaveAndDisplayCompTime(::std::vector<double> &comp_time,
 }
 
 void Agent::SaveStateHistory() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::SaveStateHistory");
   if (save_stats_) {
     // one each row, first save the time then the state
     ::std::string filename = "state_hist_" + ::std::to_string(id_) + ".csv";
@@ -2096,6 +2173,7 @@ void Agent::SaveStateHistory() {
 }
 
 void Agent::SaveAndDisplayCommunicationLatency() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::SaveAndDisplayCommunicationLatency");
   // go through all agents and compute the average and max communication
   // latency
   ::std::vector<double> com_latency_mean;
@@ -2148,6 +2226,7 @@ void Agent::SaveAndDisplayCommunicationLatency() {
 }
 
 GRBModel Agent::InitializeGurobi(GRBEnv &env) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::InitializeGurobi");
   if (gurobi_verbose_) {
     env.set(GRB_IntParam_OutputFlag, 0);
   }
@@ -2156,6 +2235,7 @@ GRBModel Agent::InitializeGurobi(GRBEnv &env) {
 }
 
 void Agent::CreateGurobiModel() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::CreateGurobiModel");
   // create temporary variables
   ::std::vector<GRBVar> tmp_vars;
 
@@ -2240,6 +2320,7 @@ void Agent::CreateGurobiModel() {
 }
 
 GRBLinExpr *Agent::ModelODE(GRBLinExpr *x_expr, ::std::vector<GRBVar> &u_i) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::ModelODE");
   GRBLinExpr *res = new GRBLinExpr[9];
   res[0] = x_expr[3];
   res[1] = x_expr[4];
@@ -2254,6 +2335,7 @@ GRBLinExpr *Agent::ModelODE(GRBLinExpr *x_expr, ::std::vector<GRBVar> &u_i) {
 }
 
 void Agent::InitializePlannerParameters() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::InitializePlannerParameters");
   // initialze lower and upper bounds
   if (n_x_ == 6) {
     // acceleration control
@@ -2275,6 +2357,7 @@ void Agent::InitializePlannerParameters() {
 }
 
 void Agent::DeclareRosParameters() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::DeclareRosParameters");
   // declare grid parameters
   declare_parameter("get_grid_service_name",
                     "/env_builder_node/get_voxel_grid");
@@ -2338,6 +2421,7 @@ void Agent::DeclareRosParameters() {
 }
 
 void Agent::InitializeRosParameters() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::InitializeRosParameters");
   // initialize grid service subscription
   get_grid_service_name_ = get_parameter("get_grid_service_name").as_string();
   voxel_grid_range_ = get_parameter("voxel_grid_range").as_double_array();
@@ -2402,6 +2486,7 @@ void Agent::InitializeRosParameters() {
 void Agent::VoxelGridResponseCallback(
     ::rclcpp::Client<::env_builder_msgs::srv::GetVoxelGrid>::SharedFuture
         future) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::VoxelGridResponseCallback");
   auto status = future.wait_for(::std::chrono::seconds(1));
   if (status == ::std::future_status::ready) {
     // store the data descriptions
@@ -2423,6 +2508,7 @@ void Agent::VoxelGridResponseCallback(
 }
 
 void Agent::GetVoxelGridAsync() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GetVoxelGridAsync");
   auto request =
       ::std::make_shared<::env_builder_msgs::srv::GetVoxelGrid::Request>();
   if (state_curr_.empty()) {
@@ -2455,6 +2541,7 @@ void Agent::GetVoxelGridAsync() {
 
 void Agent::MappingUtilVoxelGridCallback(
     const ::env_builder_msgs::msg::VoxelGridStamped::SharedPtr vg_msg) {
+ RCLCPP_DEBUG(this->get_logger(), "void Agent::MappingUtilVoxelGridCallback");
   ::env_builder_msgs::msg::VoxelGridStamped voxel_grid_stamped = *vg_msg;
   voxel_grid_mtx_.lock();
   voxel_grid_ =
@@ -2472,6 +2559,7 @@ void Agent::MappingUtilVoxelGridCallback(
 
 void Agent::GoalCallback(
     const ::geometry_msgs::msg::PointStamped::SharedPtr goal_msg) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::GoalCallback");
   goal_mtx_.lock();
   goal_curr_.resize(3);
   goal_curr_[0] = goal_msg->point.x;
@@ -2483,6 +2571,7 @@ void Agent::GoalCallback(
 void Agent::StartPlanningCallback(
     const ::multi_agent_planner_msgs::msg::StartPlanning::SharedPtr
         start_planning_msg) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::StartPlanningCallback");
   // set current state to the initial state
   state_curr_ = start_planning_msg->initial_state;
   reset_path_ = true;
@@ -2503,12 +2592,14 @@ void Agent::StartPlanningCallback(
 void Agent::StopPlanningCallback(
     const ::multi_agent_planner_msgs::msg::StopPlanning::SharedPtr
         stop_planning_msg) {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::StopPlanningCallback");
   RCLCPP_INFO(this->get_logger(), "Stopping planning");
   // set planning to inactive
   planning_active_ = false;
 }
 
 void Agent::PublishVoxelGrid() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::PublishVoxelGrid");
   // copy voxel grid before reading and publishing it
   voxel_grid_mtx_.lock();
   ::voxel_grid_util::VoxelGrid vg_util = voxel_grid_;
@@ -2566,6 +2657,7 @@ void Agent::PublishVoxelGrid() {
 }
 
 void Agent::OnShutdown() {
+ RCLCPP_DEBUG(this->get_logger(), "Entering Agent::OnShutdown");
   // save computation time to csv and display its mean, min, max and std dev
   ::std::string filename = "comp_time_sc_" + ::std::to_string(id_) + ".csv";
   SaveAndDisplayCompTime(comp_time_sc_, filename);

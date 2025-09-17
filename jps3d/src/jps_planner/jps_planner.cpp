@@ -2,14 +2,18 @@
 
 template <int Dim>
 JPSPlanner<Dim>::JPSPlanner(bool verbose): planner_verbose_(verbose) {
+  printf("[DEBUG] JPSPlanner constructor started (Dim=%d)\n", Dim);
   planner_verbose_ = verbose;
   if(planner_verbose_)
     printf(ANSI_COLOR_CYAN "JPS PLANNER VERBOSE ON\n" ANSI_COLOR_RESET);
+  printf("[DEBUG] JPSPlanner constructor completed\n");
 }
 
 template <int Dim>
 void JPSPlanner<Dim>::setMapUtil(const std::shared_ptr<JPS::MapUtil<Dim>> &map_util) {
+  printf("[DEBUG] JPSPlanner::setMapUtil called\n");
   map_util_ = map_util;
+  printf("[DEBUG] JPSPlanner::setMapUtil completed\n");
 }
 
 template <int Dim>
@@ -138,10 +142,14 @@ vec_Vecf<Dim> JPSPlanner<Dim>::getAllSet() const {
 
 template <int Dim>
 void JPSPlanner<Dim>::updateMap() {
+  printf("[DEBUG] JPSPlanner::updateMap called\n");
   Veci<Dim> dim = map_util_->getDim();
+  printf("[DEBUG] Map dimensions: %d x %d", dim(0), dim(1));
 
   if(Dim == 3) {
+    printf(" x %d (3D)\n", dim(2));
     cmap_.resize(dim(0)*dim(1)*dim(2));
+    printf("[DEBUG] Resized cmap to size: %lu\n", cmap_.size());
     for( int z = 0; z < dim(2); ++z) {
       for( int y = 0; y < dim(1); ++y) {
         for( int x = 0; x < dim(0); ++x) {
@@ -153,27 +161,35 @@ void JPSPlanner<Dim>::updateMap() {
     }
   }
   else {
+    printf(" (2D)\n");
     cmap_.resize(dim(0)*dim(1));
+    printf("[DEBUG] Resized cmap to size: %lu\n", cmap_.size());
       for( int y = 0; y < dim(1); ++y)
         for( int x = 0; x < dim(0); ++x)
           cmap_[x+y*dim(0)] = map_util_->isOccupied(Veci<Dim>(x,y)) ? 1:0;
   }
+  printf("[DEBUG] JPSPlanner::updateMap completed\n");
 }
 
 template <int Dim>
 bool JPSPlanner<Dim>::plan(const Vecf<Dim> &start, const Vecf<Dim> &goal, decimal_t eps, bool use_jps) {
+  printf("[DEBUG] JPSPlanner::plan called (Dim=%d, use_jps=%s)\n", Dim, use_jps ? "true" : "false");
   if(planner_verbose_){
     std::cout <<"Start: " << start.transpose() << std::endl;
     std::cout <<"Goal:  " << goal.transpose() << std::endl;
     std::cout <<"Epsilon:  " << eps << std::endl;
   }
 
+  printf("[DEBUG] Clearing previous paths...\n");
   path_.clear();
   raw_path_.clear();
   status_ = 0;
 
+  printf("[DEBUG] Converting start position to integer coordinates...\n");
   const Veci<Dim> start_int = map_util_->floatToInt(start);
+  printf("[DEBUG] Checking if start position is free...\n");
   if (!map_util_->isFree(start_int)) {
+    printf("[DEBUG] Start position is not free!\n");
     if(planner_verbose_) {
       if (map_util_->isOccupied(start_int))
         printf(ANSI_COLOR_RED "start is occupied!\n" ANSI_COLOR_RESET);
@@ -190,8 +206,11 @@ bool JPSPlanner<Dim>::plan(const Vecf<Dim> &start, const Vecf<Dim> &goal, decima
     return false;
   }
 
+  printf("[DEBUG] Converting goal position to integer coordinates...\n");
   const Veci<Dim> goal_int = map_util_->floatToInt(goal);
+  printf("[DEBUG] Checking if goal position is free...\n");
   if (!map_util_->isFree(goal_int)) {
+    printf("[DEBUG] Goal position is not free!\n");
     if(planner_verbose_)
       printf(ANSI_COLOR_RED "goal is not free!\n" ANSI_COLOR_RESET);
     status_ = 2;

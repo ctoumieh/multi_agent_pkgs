@@ -2,22 +2,32 @@
 
 namespace mapping_util {
 MapBuilder::MapBuilder() : ::rclcpp::Node("map_builder") {
+  RCLCPP_DEBUG(this->get_logger(), "MapBuilder constructor started");
+
   // declare environment parameters
+  RCLCPP_DEBUG(this->get_logger(), "Declaring ROS parameters...");
   DeclareRosParameters();
+  RCLCPP_DEBUG(this->get_logger(), "ROS parameters declared successfully");
 
   // initialize parameters
+  RCLCPP_DEBUG(this->get_logger(), "Initializing ROS parameters...");
   InitializeRosParameters();
+  RCLCPP_DEBUG(this->get_logger(), "ROS parameters initialized successfully");
 
   // set up a callback to execute code on shutdown
+  RCLCPP_DEBUG(this->get_logger(), "Setting up shutdown callback");
   on_shutdown(::std::bind(&MapBuilder::OnShutdown, this));
 
   // resize current position
+  RCLCPP_DEBUG(this->get_logger(), "Initializing current position array");
   pos_curr_.resize(3);
 
   // set first transform received to false
+  RCLCPP_DEBUG(this->get_logger(), "Setting first_transform_received to false");
   first_transform_received_ = false;
 
   // create environment voxel grid subscriber
+  RCLCPP_DEBUG(this->get_logger(), "Creating environment voxel grid subscriber on topic: %s", env_vg_topic_.c_str());
   voxel_grid_sub_ =
       create_subscription<::env_builder_msgs::msg::VoxelGridStamped>(
           env_vg_topic_, 10,
@@ -26,23 +36,30 @@ MapBuilder::MapBuilder() : ::rclcpp::Node("map_builder") {
 
   // create agent position subscriber
   agent_frame_ = "agent_" + ::std::to_string(id_);
+  RCLCPP_DEBUG(this->get_logger(), "Setting agent frame to: %s", agent_frame_.c_str());
+  RCLCPP_DEBUG(this->get_logger(), "Creating TF buffer and listener...");
   tf_buffer_ = ::std::make_shared<::tf2_ros::Buffer>(this->get_clock());
   tf_listener_ =
       ::std::make_shared<::tf2_ros::TransformListener>(*tf_buffer_, this);
 
+  RCLCPP_DEBUG(this->get_logger(), "Creating TF subscriber...");
   tf_subscriber_ = this->create_subscription<::tf2_msgs::msg::TFMessage>(
       "/tf", 10,
       ::std::bind(&MapBuilder::TfCallback, this, ::std::placeholders::_1));
 
   // create voxel grid publisher
   ::std::string vg_pub_topic = "agent_" + ::std::to_string(id_) + "/voxel_grid";
+  RCLCPP_DEBUG(this->get_logger(), "Creating voxel grid publisher on topic: %s", vg_pub_topic.c_str());
   voxel_grid_pub_ = create_publisher<::env_builder_msgs::msg::VoxelGridStamped>(
       vg_pub_topic, 10);
 
   // create frustum publisher
   ::std::string frustum_pub_topic = "agent_" + ::std::to_string(id_) + "/fov";
+  RCLCPP_DEBUG(this->get_logger(), "Creating frustum publisher on topic: %s", frustum_pub_topic.c_str());
   frustum_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       frustum_pub_topic, 10);
+
+  RCLCPP_DEBUG(this->get_logger(), "MapBuilder constructor completed successfully");
 }
 
 void MapBuilder::DeclareRosParameters() {
@@ -83,8 +100,12 @@ void MapBuilder::InitializeRosParameters() {
 
 void MapBuilder::EnvironmentVoxelGridCallback(
     const ::env_builder_msgs::msg::VoxelGridStamped::SharedPtr vg_msg) {
+  RCLCPP_DEBUG(this->get_logger(), "EnvironmentVoxelGridCallback started");
+
   // first check if we received the first position
+  RCLCPP_DEBUG(this->get_logger(), "Checking if first transform received: %s", first_transform_received_ ? "true" : "false");
   if (first_transform_received_) {
+    RCLCPP_DEBUG(this->get_logger(), "Processing voxel grid message...");
     // start global timer
     auto t_start_wall_global = ::std::chrono::high_resolution_clock::now();
 
