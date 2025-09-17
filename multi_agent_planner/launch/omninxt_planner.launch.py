@@ -63,7 +63,7 @@ def launch_nodes(context, *args, **kwargs):
             ],
             # prefix=['xterm -fa default -fs 10 -xrm "XTerm*selectToClipboard: true" -e gdb -ex run --args'],
             # prefix=['xterm -fa default -fs 10 -hold -e'],
-            arguments=['--ros-args', '--log-level', 'your_node:=DEBUG', '--log-level', 'rcl:=INFO'],
+            arguments=['--ros-args', '--log-level', 'DEBUG'],
             output='screen',
             emulate_tty=True,
         )
@@ -86,7 +86,7 @@ def launch_nodes(context, *args, **kwargs):
         ],
         # prefix=['xterm -fa default -fs 10 -xrm "XTerm*selectToClipboard: true" -e gdb -ex run --args'],
         # prefix=['xterm -fa default -fs 10 -hold -e'],
-        arguments=['--ros-args', '--log-level', 'your_node:=DEBUG', '--log-level', 'rcl:=INFO'],
+        arguments=['--ros-args', '--log-level', 'DEBUG'],
         output='screen',
         emulate_tty=True,
     )
