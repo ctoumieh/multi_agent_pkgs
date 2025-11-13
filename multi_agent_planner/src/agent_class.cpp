@@ -12,6 +12,11 @@ Agent::Agent()
   // initialize MPC/MIQP parameters
   InitializePlannerParameters();
 
+  // initialize the safety planes client.
+  planes_client_ =
+      this->create_client<swarmnxt_msgs::srv::GetPlanes>("/get_planes");
+  RequestSafetyPlanes();
+
   // intialize random variables
   gen_ = ::std::make_unique<std::mt19937>(id_);
   dis_ = ::std::uniform_real_distribution<>(0.0, 1.0);
@@ -124,6 +129,7 @@ Agent::Agent()
           stop_planning_topic, 10,
           ::std::bind(&Agent::StopPlanningCallback, this,
                       ::std::placeholders::_1));
+
   // launch path planning thread
   path_planning_thread_ = ::std::thread(&Agent::UpdatePath, this);
 
@@ -690,6 +696,52 @@ void Agent::TrajectoryOtherAgentsCallback(
     int64_t stamp_now = now().nanoseconds();
     int64_t stamp_diff = stamp_now - stamp_ns;
     com_latency_ms_[id].push_back(stamp_diff / 1e6);
+  }
+}
+
+void Agent::RequestSafetyPlanes() {
+  // Wait for the service to be available.
+  while (!planes_client_->wait_for_service(std::chrono::seconds(1))) {
+    if (!rclcpp::ok()) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "Interrupted while waiting for the service. Exiting.");
+      // You might want to throw an exception or shut down here
+      return;
+    }
+    RCLCPP_INFO(this->get_logger(),
+                "Service '/get_planes' not available, waiting again...");
+  }
+
+  // Create the request (it's empty for this service)
+  auto request = std::make_shared<swarmnxt_msgs::srv::GetPlanes::Request>();
+
+  // Send the request asynchronously, but save the "future" (a handle to the
+  // eventual result)
+  auto result_future = planes_client_->async_send_request(request);
+
+  // --- THIS IS THE BLOCKING PART ---
+  // We spin the node *just long enough* for the future to be complete.
+  // This processes the service response while blocking this function.
+  RCLCPP_INFO(this->get_logger(), "Waiting for safety planes response...");
+  if (rclcpp::spin_until_future_complete(this->get_node_base_interface(),
+                                         result_future, std::chrono::seconds(10)) ==
+      rclcpp::FutureReturnCode::SUCCESS) {
+    try {
+      // Get the response from the future
+      auto response = result_future.get();
+      this->safety_planes_ = response->planes;
+      RCLCPP_INFO(this->get_logger(),
+                  "Successfully received %zu safety planes.",
+                  this->safety_planes_.size());
+    } catch (const std::exception &e) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "Service call to /get_planes failed after spin: %s",
+                   e.what());
+    }
+  } else {
+    RCLCPP_ERROR(
+        this->get_logger(),
+        "Failed to call service /get_planes (e.g., timeout or interrupted).");
   }
 }
 
@@ -2242,6 +2294,29 @@ void Agent::CreateGurobiModel() {
                        "dyn_constr_" + ::std::to_string(i) +
                            ::std::to_string(j));
     }
+  }
+
+  // add safety planes constraints
+  int p_idx = 0; // Index for constraint naming
+  for (const auto &plane : this->safety_planes_) {
+    // The constraint from the safety_checker is:
+    // a*x + b*y + c*z + d <= 0
+    // plane.normal.x * x + plane.normal.y * y + plane.normal.z * z <=
+    // -plane.d
+
+    // We must apply this static constraint to EVERY point in the trajectory
+    for (int i = 0; i < (n_hor_ + 1); i++) {
+      GRBLinExpr plane_expr = 0;
+      plane_expr += plane.normal.x * x_grb_[i][0]; // Assumes [0] is pos_x
+      plane_expr += plane.normal.y * x_grb_[i][1]; // Assumes [1] is pos_y
+      plane_expr += plane.normal.z * x_grb_[i][2]; // Assumes [2] is pos_z
+
+      // Add the constraint to the model
+      model_.addConstr(plane_expr, GRB_LESS_EQUAL, -plane.d,
+                       "safety_plane_" + std::to_string(i) +
+                           std::to_string(p_idx));
+    }
+    p_idx++;
   }
 }
 

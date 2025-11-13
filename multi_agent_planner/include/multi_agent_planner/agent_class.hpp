@@ -34,16 +34,18 @@
 #include "multi_agent_planner_msgs/msg/trajectory.hpp"
 #include "path_tools.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "swarmnxt_msgs/srv/get_planes.hpp"
+#include "swarmnxt_msgs/msg/plane.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 #include "voxel_grid.hpp"
 
 namespace multi_agent_planner {
 class Agent : public ::rclcpp::Node {
- public:
+public:
   // constructor
   Agent();
 
- private:
+private:
   /*--------------------- class methods ---------------------*/
   // declare ros parameters
   void DeclareRosParameters();
@@ -125,19 +127,22 @@ class Agent : public ::rclcpp::Node {
   // we can move along the trajectory
   void CheckReferenceTrajIncrement();
 
+  // request the safety planes that consitute the bounding box of the enviornment
+  void RequestSafetyPlanes();
+
   // remove points that are the middle of two segments that have an acute angle
   // between them since they are redundant
-  ::std::vector<::std::vector<double>> RemoveZigZagSegments(
-      ::std::vector<::std::vector<double>> path);
+  ::std::vector<::std::vector<double>>
+  RemoveZigZagSegments(::std::vector<::std::vector<double>> path);
 
   // sample path using path_vel and n_hor_
-  ::std::vector<std::vector<double>> SamplePath(
-      ::std::vector<::std::vector<double>> &path);
+  ::std::vector<std::vector<double>>
+  SamplePath(::std::vector<::std::vector<double>> &path);
 
   // keep only the points that are in the free voxels for the reference
   // trajectory
-  ::std::vector<::std::vector<double>> KeepOnlyFreeReference(
-      ::std::vector<::std::vector<double>> &traj_ref);
+  ::std::vector<::std::vector<double>>
+  KeepOnlyFreeReference(::std::vector<::std::vector<double>> &traj_ref);
 
   // compute the path sampling velocity based on path and the voxel
   // grid/potential field; if the path is close to the obstacles, we wanna
@@ -149,16 +154,18 @@ class Agent : public ::rclcpp::Node {
   double GetVelocityLimit(double occ_val, double dist_start);
 
   // add hyperplane to a safe corridor
-  ::std::vector<LinearConstraint3D> AddHyperplane(
-      ::std::vector<LinearConstraint3D> &poly_const_vec, Hyperplane3D &hp);
+  ::std::vector<LinearConstraint3D>
+  AddHyperplane(::std::vector<LinearConstraint3D> &poly_const_vec,
+                Hyperplane3D &hp);
 
   // generate guroby polyhedron constraints from a polyhedron
-  ::std::vector<GRBLinExpr> GetGurobiPolyhedronConstraints(
-      LinearConstraint3D &poly, GRBLinExpr *x);
+  ::std::vector<GRBLinExpr>
+  GetGurobiPolyhedronConstraints(LinearConstraint3D &poly, GRBLinExpr *x);
 
   // get intermediate goal
-  ::std::vector<double> GetIntermediateGoal(
-      ::std::vector<double> &goal, ::voxel_grid_util::VoxelGrid &voxel_grid);
+  ::std::vector<double>
+  GetIntermediateGoal(::std::vector<double> &goal,
+                      ::voxel_grid_util::VoxelGrid &voxel_grid);
 
   // clear the borders of the voxel grid
   void ClearBoundary(::voxel_grid_util::VoxelGrid &voxel_grid);
@@ -224,8 +231,8 @@ class Agent : public ::rclcpp::Node {
       const ::env_builder_msgs::msg::VoxelGridStamped::SharedPtr vg_msg);
 
   // current goal subscriber callback
-  void GoalCallback(
-      const ::geometry_msgs::msg::PointStamped::SharedPtr goal_msg);
+  void
+  GoalCallback(const ::geometry_msgs::msg::PointStamped::SharedPtr goal_msg);
 
   // start planning callback
   void StartPlanningCallback(
@@ -305,6 +312,10 @@ class Agent : public ::rclcpp::Node {
       SharedPtr start_planning_sub_;
   ::rclcpp::Subscription<::multi_agent_planner_msgs::msg::StopPlanning>::
       SharedPtr stop_planning_sub_;
+
+  /* variables to get the safety planes/bounding box of the environemnt */
+  rclcpp::Client<swarmnxt_msgs::srv::GetPlanes>::SharedPtr planes_client_;
+  std::vector<swarmnxt_msgs::msg::Plane> safety_planes_;
 
   /* planner parameters */
   // topic prefix name that we add the id to it before publishing
@@ -567,6 +578,6 @@ class Agent : public ::rclcpp::Node {
   // milliseconds
   ::std::vector<::std::vector<double>> com_latency_ms_;
 };
-}  // namespace multi_agent_planner
+} // namespace multi_agent_planner
 
-#endif  // MULTI_AGENT_PLANNER_AGENT_CLASS_H_
+#endif // MULTI_AGENT_PLANNER_AGENT_CLASS_H_

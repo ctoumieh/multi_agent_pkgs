@@ -28,6 +28,7 @@ find_package(voxel_grid_util REQUIRED)
 find_package(path_finding_util REQUIRED)
 find_package(mapping_util REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(swarmnxt_msgs REQUIRED)
 
 set(DEPENDENCIES
   pcl_conversions
@@ -41,6 +42,7 @@ set(DEPENDENCIES
   mapping_util
   decomp_ros_utils
   tf2_ros
+  swarmnxt_msgs
 )
 
 set(GUROBI_LIBRARIES "$ENV{GUROBI_HOME}/lib/libgurobi_c++.a;$ENV{GUROBI_HOME}/lib/libgurobi100.so" )

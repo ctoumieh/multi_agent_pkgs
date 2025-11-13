@@ -19,6 +19,7 @@
   <depend>decomp_ros_msgs</depend>
   <depend>mapping_util</depend>
   <depend>tf2_ros</depend>
+  <depend>swarmnxt_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
