@@ -104,7 +104,7 @@ def generate_launch_description():
     ))
     ld.add_action(DeclareLaunchArgument(
         'goal_position',
-        default_value='[1.0,1.0,1.0]'
+        default_value='[1.0,0.0,1.0]'
     ))
 
     # Add node actions via opaque function

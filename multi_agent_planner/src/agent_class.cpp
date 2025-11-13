@@ -185,7 +185,8 @@ void Agent::TrajPlanningIteration() {
     auto t_start_wall = ::std::chrono::high_resolution_clock::now();
     auto duration_since_epoch = t_start_wall.time_since_epoch();
     double seconds =
-        std::chrono::duration<double>(duration_since_epoch).count();
+        std::chrono::duration<double>(duration_since_epoch).count() +
+        dt_ * step_plan_;
     planning_start_time_hist_.push_back(seconds);
 
     // save the received trajectories
@@ -1305,8 +1306,7 @@ void Agent::CheckOthersTrajectories() {
       /*           << " current planning time:" << planning_start_time */
       /*           << std::endl; */
       ::multi_agent_planner_msgs::msg::Trajectory traj = traj_other_agents_[i];
-      double time_diff = fabs(traj.planning_start_time + dt_ * step_plan_ -
-                              planning_start_time);
+      double time_diff = fabs(traj.planning_start_time - planning_start_time);
 
       auto stamp_other = traj.stamp;
       int64_t stamp_ns = stamp_other.sec * 1e9 + stamp_other.nanosec;
