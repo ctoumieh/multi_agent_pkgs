@@ -188,7 +188,8 @@ void Agent::TrajPlanningIteration() {
     auto t_start_wall = ::std::chrono::high_resolution_clock::now();
     auto duration_since_epoch = t_start_wall.time_since_epoch();
     double seconds =
-        std::chrono::duration<double>(duration_since_epoch).count();
+        std::chrono::duration<double>(duration_since_epoch).count() +
+        dt_ * step_plan_;
     planning_start_time_hist_.push_back(seconds);
 
     // save the received trajectories
@@ -390,7 +391,8 @@ void Agent::UpdatePath() {
              i < traj_ref_points_to_keep_) {
         traj_tmp.push_back(traj_ref_curr[i]);
         i = ::std::min(int(traj_ref_curr.size()) - 1, i + 1);
-        if (i == int(traj_ref_curr.size()) - 1) break;
+        if (i == int(traj_ref_curr.size()) - 1)
+          break;
       }
       traj_ref_curr = traj_tmp;
       start = {traj_ref_curr.back()[0], traj_ref_curr.back()[1],
@@ -1146,8 +1148,8 @@ void Agent::UpdateCurrentTrajectory() {
   }
 }
 
-::std::vector<GRBLinExpr> Agent::GetGurobiPolyhedronConstraints(
-    LinearConstraint3D &poly, GRBLinExpr *x) {
+::std::vector<GRBLinExpr>
+Agent::GetGurobiPolyhedronConstraints(LinearConstraint3D &poly, GRBLinExpr *x) {
   ::std::vector<GRBLinExpr> polyhedron_gurobi_const;
   auto A = poly.A_;
   auto b = poly.b_;
@@ -1258,7 +1260,7 @@ void Agent::GenerateTimeAwareSafeCorridor() {
         // new iteration, it is changing the previous hyperplanes of all the
         // trajectory which may render the trajectory infeasible; need
         // modification to account for that
-        double pert = 0;  // pert_int % 50 / 1000;
+        double pert = 0; // pert_int % 50 / 1000;
         // compute the final plane normal by adding the perturbations to
         // the original plane normal
         Vec3f plane_normal_final = (var_tmp + pert) * right +
@@ -1278,8 +1280,9 @@ void Agent::GenerateTimeAwareSafeCorridor() {
   comp_time_tasc_.push_back((double)(clock() - t_start) / CLOCKS_PER_SEC * 1e3);
 }
 
-::std::vector<LinearConstraint3D> Agent::AddHyperplane(
-    ::std::vector<LinearConstraint3D> &poly_const_vec, Hyperplane3D &hp) {
+::std::vector<LinearConstraint3D>
+Agent::AddHyperplane(::std::vector<LinearConstraint3D> &poly_const_vec,
+                     Hyperplane3D &hp) {
   ::std::vector<LinearConstraint3D> poly_const_tmp;
   for (auto &poly_i : poly_const_vec) {
     auto A_ = poly_i.A_;
@@ -1308,8 +1311,7 @@ void Agent::CheckOthersTrajectories() {
       /*           << " current planning time:" << planning_start_time */
       /*           << std::endl; */
       ::multi_agent_planner_msgs::msg::Trajectory traj = traj_other_agents_[i];
-      double time_diff = fabs(traj.planning_start_time + dt_ * step_plan_ -
-                              planning_start_time);
+      double time_diff = fabs(traj.planning_start_time - planning_start_time);
 
       auto stamp_other = traj.stamp;
       int64_t stamp_ns = stamp_other.sec * 1e9 + stamp_other.nanosec;
@@ -1645,8 +1647,8 @@ void Agent::GenerateReferenceTrajectory() {
   traj_ref_mtx_.unlock();
 }
 
-::std::vector<::std::vector<double>> Agent::RemoveZigZagSegments(
-    ::std::vector<::std::vector<double>> path) {
+::std::vector<::std::vector<double>>
+Agent::RemoveZigZagSegments(::std::vector<::std::vector<double>> path) {
   // get voxel grid to check if line is clear when removing zigzags
   voxel_grid_mtx_.lock();
   ::voxel_grid_util::VoxelGrid vg_util = voxel_grid_;
@@ -1681,8 +1683,8 @@ void Agent::GenerateReferenceTrajectory() {
   return path;
 }
 
-::std::vector<std::vector<double>> Agent::SamplePath(
-    ::std::vector<::std::vector<double>> &path) {
+::std::vector<std::vector<double>>
+Agent::SamplePath(::std::vector<::std::vector<double>> &path) {
   // create empty reference traj and add the first point to it
   ::std::vector<::std::vector<double>> traj_ref;
 
@@ -1755,8 +1757,8 @@ void Agent::GenerateReferenceTrajectory() {
   return traj_ref;
 }
 
-::std::vector<::std::vector<double>> Agent::KeepOnlyFreeReference(
-    ::std::vector<::std::vector<double>> &traj_ref) {
+::std::vector<::std::vector<double>>
+Agent::KeepOnlyFreeReference(::std::vector<::std::vector<double>> &traj_ref) {
   // get the latest version of the voxel grid
   voxel_grid_mtx_.lock();
   ::voxel_grid_util::VoxelGrid vg_util = voxel_grid_;
@@ -1855,7 +1857,7 @@ double Agent::ComputePathVelocity(::std::vector<::std::vector<double>> &path) {
       }
 
       // stop the loop after the collision
-      break;  //
+      break; //
     }
   }
 
@@ -1866,7 +1868,8 @@ double Agent::ComputePathVelocity(::std::vector<::std::vector<double>> &path) {
     ::Eigen::Vector3d start_vel(traj_curr_[i][3], traj_curr_[i][4],
                                 traj_curr_[i][5]);
     for (int j = 0; j < n_rob_; j++) {
-      if (j == id_) continue;
+      if (j == id_)
+        continue;
       // get the last trajectory of the agent
       ::multi_agent_planner_msgs::msg::Trajectory traj = traj_other_agents_[j];
       if (traj.states.size() != 0) {
@@ -1880,7 +1883,7 @@ double Agent::ComputePathVelocity(::std::vector<::std::vector<double>> &path) {
         double thres_passby = 0;
         double voxel_val_between =
             100 *
-            pow(sens_other_agents_, i);  // regard other robots as obstacles
+            pow(sens_other_agents_, i); // regard other robots as obstacles
         // the further the horizon, the fewer the voxel val
         double path_vel_tmp = GetVelocityLimit(voxel_val_between, dist_between);
         if (path_vel_tmp < path_vel) {
@@ -1894,8 +1897,10 @@ double Agent::ComputePathVelocity(::std::vector<::std::vector<double>> &path) {
 
 double Agent::GetVelocityLimit(double occ_val, double dist_start) {
   // compute linear factor
-  if (occ_val < 0) occ_val = 0;
-  if (occ_val > 100) occ_val = 100;
+  if (occ_val < 0)
+    occ_val = 0;
+  if (occ_val > 100)
+    occ_val = 100;
   // double alpha = 1 - (1 - 1 / exp(sens_pot_ * occ_val)) *
   //                        (1 / exp(sens_dist_ * dist_start));
   double alpha =
@@ -1976,8 +1981,9 @@ double Agent::DotProduct(::std::vector<double> &v_1,
   return v_1[0] * v_2[0] + v_1[1] * v_2[1] + v_1[2] * v_2[2];
 }
 
-::std::vector<double> Agent::GetIntermediateGoal(
-    ::std::vector<double> &goal, ::voxel_grid_util::VoxelGrid &voxel_grid) {
+::std::vector<double>
+Agent::GetIntermediateGoal(::std::vector<double> &goal,
+                           ::voxel_grid_util::VoxelGrid &voxel_grid) {
   // get goal position in grid frame
   ::Eigen::Vector3d goal_grid_frame;
   ::Eigen::Vector3d origin = voxel_grid.GetOrigin();
@@ -2162,7 +2168,7 @@ void Agent::CreateGurobiModel() {
   // add state variables to model
   for (int i = 0; i < (n_hor_ + 1); i++) {
     for (int j = 0; j < n_x_; j++) {
-      if (i == n_hor_ && j >= 3) {  //  && j<=5
+      if (i == n_hor_ && j >= 3) { //  && j<=5
         tmp_vars.push_back(
             model_.addVar(0.0, 0.0, 0.0, GRB_CONTINUOUS,
                           "x_" + ::std::to_string(i) + ::std::to_string(j)));
@@ -2231,10 +2237,10 @@ void Agent::CreateGurobiModel() {
     }
 
     for (int j = 0; j < n_x_; j++) {
-      model_.addConstr(
-          GRBLinExpr(x_grb_[i + 1][j], 1.0) ==
-              GRBLinExpr(x_grb_[i][j], 1.0) + dt_ * mod_final[j],
-          "dyn_constr_" + ::std::to_string(i) + ::std::to_string(j));
+      model_.addConstr(GRBLinExpr(x_grb_[i + 1][j], 1.0) ==
+                           GRBLinExpr(x_grb_[i][j], 1.0) + dt_ * mod_final[j],
+                       "dyn_constr_" + ::std::to_string(i) +
+                           ::std::to_string(j));
     }
   }
 }
@@ -2440,9 +2446,8 @@ void Agent::GetVoxelGridAsync() {
 
   while (!voxel_grid_client_->wait_for_service(::std::chrono::seconds(1))) {
     if (!::rclcpp::ok()) {
-      RCLCPP_ERROR(get_logger(),
-                   "Interrupted while waiting for the get "
-                   "voxel grid service. Exiting.");
+      RCLCPP_ERROR(get_logger(), "Interrupted while waiting for the get "
+                                 "voxel grid service. Exiting.");
       return;
     }
     RCLCPP_INFO(get_logger(),
@@ -2586,4 +2591,4 @@ void Agent::OnShutdown() {
   // save and display communication latency
   SaveAndDisplayCommunicationLatency();
 }
-}  // namespace multi_agent_planner
+} // namespace multi_agent_planner
