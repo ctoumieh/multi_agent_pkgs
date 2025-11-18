@@ -723,9 +723,9 @@ void Agent::RequestSafetyPlanes() {
   // We spin the node *just long enough* for the future to be complete.
   // This processes the service response while blocking this function.
   RCLCPP_INFO(this->get_logger(), "Waiting for safety planes response...");
-  if (rclcpp::spin_until_future_complete(this->get_node_base_interface(),
-                                         result_future, std::chrono::seconds(10)) ==
-      rclcpp::FutureReturnCode::SUCCESS) {
+  if (rclcpp::spin_until_future_complete(
+          this->get_node_base_interface(), result_future,
+          std::chrono::seconds(10)) == rclcpp::FutureReturnCode::SUCCESS) {
     try {
       // Get the response from the future
       auto response = result_future.get();
@@ -1356,14 +1356,14 @@ void Agent::CheckOthersTrajectories() {
   double planning_start_time = planning_start_time_hist_.back();
   for (int i = 0; i < n_rob_; i++) {
     if (i != id_) {
-      /* std::cout << "id: " << id_ << " i: " << i */
-      /*           << " planning time other: " << std::setprecision(15) */
-      /*           << traj_other_agents_[i].planning_start_time + dt_ *
-       * step_plan_ */
-      /*           << " current planning time:" << planning_start_time */
-      /*           << std::endl; */
       ::multi_agent_planner_msgs::msg::Trajectory traj = traj_other_agents_[i];
       double time_diff = fabs(traj.planning_start_time - planning_start_time);
+
+      std::cout << "id: " << id_ << " i: " << i
+                << " planning time other: " << std::setprecision(15)
+                << traj_other_agents_[i].planning_start_time 
+                << " current planning time:" << planning_start_time
+                <<  " time_diff: " << time_diff << std::endl;
 
       auto stamp_other = traj.stamp;
       int64_t stamp_ns = stamp_other.sec * 1e9 + stamp_other.nanosec;
