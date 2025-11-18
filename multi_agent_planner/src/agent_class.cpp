@@ -2563,6 +2563,14 @@ void Agent::GoalCallback(
 void Agent::StartPlanningCallback(
     const ::multi_agent_planner_msgs::msg::StartPlanning::SharedPtr
         start_planning_msg) {
+
+  goal_mtx_.lock();
+  goal_curr_.resize(3);
+  goal_curr_[0] = start_planning_msg->initial_state[0];
+  goal_curr_[1] = start_planning_msg->initial_state[1];
+  goal_curr_[2] = start_planning_msg->initial_state[2];
+  goal_mtx_.unlock();
+
   // set current state to the initial state
   state_curr_ = start_planning_msg->initial_state;
   reset_path_ = true;
