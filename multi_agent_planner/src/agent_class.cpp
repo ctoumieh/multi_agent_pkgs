@@ -1359,16 +1359,16 @@ void Agent::CheckOthersTrajectories() {
       ::multi_agent_planner_msgs::msg::Trajectory traj = traj_other_agents_[i];
       double time_diff = fabs(traj.planning_start_time - planning_start_time);
 
-      std::cout << "id: " << id_ << " i: " << i
-                << " planning time other: " << std::setprecision(15)
-                << traj_other_agents_[i].planning_start_time 
-                << " current planning time:" << planning_start_time
-                <<  " time_diff: " << time_diff << std::endl;
+      /* std::cout << "id: " << id_ << " i: " << i */
+      /*           << " planning time other: " << std::setprecision(15) */
+      /*           << traj_other_agents_[i].planning_start_time */
+      /*           << " current planning time:" << planning_start_time */
+      /*           << " time_diff: " << time_diff << std::endl; */
 
       auto stamp_other = traj.stamp;
       int64_t stamp_ns = stamp_other.sec * 1e9 + stamp_other.nanosec;
       int64_t stamp_now = now().nanoseconds();
-      int64_t stamp_diff = stamp_now - stamp_ns;
+      int64_t stamp_diff = stamp_now - stamp_ns - dt_ * step_plan_;
       double passed_time = stamp_diff / 1e6;
       bool delay_constraint =
           (passed_time < dis_(*gen_) * communication_delay_ * 1e3);
