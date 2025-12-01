@@ -1,4 +1,7 @@
-#include "mapping_util/map_builder.hpp"
+#include "map_builder.hpp"
+
+// [NOTE] tf2_eigen include removed to avoid linker ambiguity.
+// We will do the conversion manually below.
 
 namespace mapping_util {
 MapBuilder::MapBuilder() : ::rclcpp::Node("map_builder") {
@@ -127,8 +130,8 @@ void MapBuilder::InitializeRosParameters() {
   filter_radius_ = get_parameter("filter_radius").as_double();
 
   swarm_frames_.erase(
-      std::remove(swarm_frames_.begin(), swarm_frames_.end(), agent_frame_),
-      swarm_frames_.end());
+    std::remove(swarm_frames_.begin(), swarm_frames_.end(), agent_frame_),
+    swarm_frames_.end());
 }
 
 // -------------------------------------------------------------------------
@@ -171,24 +174,43 @@ void MapBuilder::PointCloudCallback(
   }
 
   // 3. Process Cloud
-  sensor_msgs::msg::PointCloud2 transformed_cloud_msg;
-  Eigen::Matrix4f transform =
-      tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
-  pcl_ros::transformPointCloud(transform, *msg, transformed_cloud_msg);
+  // Manual conversion from ROS Msg to Eigen to avoid linker error
+  Eigen::Quaterniond q(
+      transform_stamped.transform.rotation.w,
+      transform_stamped.transform.rotation.x,
+      transform_stamped.transform.rotation.y,
+      transform_stamped.transform.rotation.z);
+  Eigen::Vector3d t(
+      transform_stamped.transform.translation.x,
+      transform_stamped.transform.translation.y,
+      transform_stamped.transform.translation.z);
 
+  Eigen::Isometry3d iso = Eigen::Isometry3d::Identity();
+  iso.translate(t);
+  iso.rotate(q);
+  Eigen::Matrix4f transform_mat = iso.matrix().cast<float>();
+
+  pcl::PointCloud<pcl::PointXYZ> cloud_in;
+  pcl::fromROSMsg(*msg, cloud_in);
   pcl::PointCloud<pcl::PointXYZ> cloud;
-  pcl::fromROSMsg(transformed_cloud_msg, cloud);
+  pcl::transformPointCloud(cloud_in, cloud, transform_mat);
 
   // 4. Initialize Temp Grids
-  ::voxel_grid_util::VoxelGrid vg_obstacles(
-      voxel_grid_curr_.GetOrigin(), voxel_grid_curr_.GetDim(),
-      voxel_grid_curr_.GetVoxSize(), true);
-  ::voxel_grid_util::VoxelGrid vg_accum(
-      voxel_grid_curr_.GetOrigin(), voxel_grid_curr_.GetDim(),
-      voxel_grid_curr_.GetVoxSize(), true);
-  ::voxel_grid_util::VoxelGrid vg_drone(
-      voxel_grid_curr_.GetOrigin(), voxel_grid_curr_.GetDim(),
-      voxel_grid_curr_.GetVoxSize(), true);
+  Eigen::Vector3d origin_curr = voxel_grid_curr_.GetOrigin();
+  Eigen::Vector3i dim_curr = voxel_grid_curr_.GetDim();
+  double vox_size_curr = voxel_grid_curr_.GetVoxSize();
+
+  Eigen::Vector3d origin_obs = origin_curr;
+  Eigen::Vector3i dim_obs = dim_curr;
+  ::voxel_grid_util::VoxelGrid vg_obstacles(origin_obs, dim_obs, vox_size_curr, true);
+
+  Eigen::Vector3d origin_acc = origin_curr;
+  Eigen::Vector3i dim_acc = dim_curr;
+  ::voxel_grid_util::VoxelGrid vg_accum(origin_acc, dim_acc, vox_size_curr, true);
+
+  Eigen::Vector3d origin_drn = origin_curr;
+  Eigen::Vector3i dim_drn = dim_curr;
+  ::voxel_grid_util::VoxelGrid vg_drone(origin_drn, dim_drn, vox_size_curr, true);
 
   // 5. Swarm Filtering & Counting
   std::vector<Eigen::Vector3d> other_drones;
@@ -204,10 +226,8 @@ void MapBuilder::PointCloudCallback(
   for (const auto &point : cloud.points) {
     Eigen::Vector3d p_vec(point.x, point.y, point.z);
 
-    // Increment total count
     vg_accum.SetVoxelGlobal(p_vec, vg_accum.GetVoxelGlobal(p_vec) + 1);
 
-    // Check if it is a drone
     bool is_drone = false;
     for(const auto& d_pos : other_drones) {
         if((p_vec - d_pos).squaredNorm() < r_sq) {
@@ -236,13 +256,37 @@ void MapBuilder::PointCloudCallback(
   }
 
   // 7. Update Camera Poses
-  Eigen::Isometry3d drone_pose_in_world;
-  tf2::fromMsg(transform_stamped.transform, drone_pose_in_world);
+  // Manual conversion
+  Eigen::Quaterniond q_drone(
+      transform_stamped.transform.rotation.w,
+      transform_stamped.transform.rotation.x,
+      transform_stamped.transform.rotation.y,
+      transform_stamped.transform.rotation.z);
+  Eigen::Vector3d t_drone(
+      transform_stamped.transform.translation.x,
+      transform_stamped.transform.translation.y,
+      transform_stamped.transform.translation.z);
+  Eigen::Isometry3d drone_pose_in_world = Eigen::Isometry3d::Identity();
+  drone_pose_in_world.translate(t_drone);
+  drone_pose_in_world.rotate(q_drone);
 
   cameras_in_local_grid_.clear();
   for (const auto &camera_info : cameras_) {
-    Eigen::Isometry3d camera_pose_rel;
-    tf2::fromMsg(camera_info.pose, camera_pose_rel);
+    // [FIXED] Corrected property names: 'pose.orientation' and 'pose.position'
+    Eigen::Quaterniond q_cam(
+        camera_info.pose.orientation.w,
+        camera_info.pose.orientation.x,
+        camera_info.pose.orientation.y,
+        camera_info.pose.orientation.z);
+    Eigen::Vector3d t_cam(
+        camera_info.pose.position.x,
+        camera_info.pose.position.y,
+        camera_info.pose.position.z);
+
+    Eigen::Isometry3d camera_pose_rel = Eigen::Isometry3d::Identity();
+    camera_pose_rel.translate(t_cam);
+    camera_pose_rel.rotate(q_cam);
+
     Eigen::Isometry3d camera_pose_world = drone_pose_in_world * camera_pose_rel;
 
     Eigen::Vector3d cam_pos_world = camera_pose_world.translation();
@@ -264,11 +308,10 @@ void MapBuilder::PointCloudCallback(
   raycast_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_ray - t_start_ray).count());
 
   // 9. Thresholding & Publish
-  // (Assuming merge happens in Raycast for vision logic as it modifies vg_curr directly)
-
-  ::voxel_grid_util::VoxelGrid voxel_grid(voxel_grid_curr_.GetOrigin(),
-                                          voxel_grid_curr_.GetDim(),
-                                          voxel_grid_curr_.GetVoxSize(), true);
+  Eigen::Vector3d origin_final = voxel_grid_curr_.GetOrigin();
+  Eigen::Vector3i dim_final = voxel_grid_curr_.GetDim();
+  double vs_final = voxel_grid_curr_.GetVoxSize();
+  ::voxel_grid_util::VoxelGrid voxel_grid(origin_final, dim_final, vs_final, true);
 
   for (int i = 0; i < dim[0]; i++) {
     for (int j = 0; j < dim[1]; j++) {
@@ -318,7 +361,11 @@ void MapBuilder::PointCloudCallback(
   tot_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_total - t_start_total).count());
 
   // Shift logic
-  Eigen::Vector3i drone_voxel_idx = voxel_grid_curr_.GetVoxel(pos_curr);
+  Eigen::Vector3d origin_shift = voxel_grid_curr_.GetOrigin();
+  double vs_shift = voxel_grid_curr_.GetVoxSize();
+  Eigen::Vector3i drone_voxel_idx;
+  for(int k=0; k<3; k++) drone_voxel_idx[k] = std::floor((pos_curr[k] - origin_shift[k]) / vs_shift);
+
   Eigen::Vector3i center_voxel_idx = dim / 2;
   Eigen::Vector3i shift = drone_voxel_idx - center_voxel_idx;
 
@@ -386,7 +433,10 @@ void MapBuilder::EnvironmentVoxelGridCallback(
     }
     if (!free_grid_) {
       if (voxel_grid_curr_.GetData().size() == 0) {
-        voxel_grid_curr_ = ::voxel_grid_util::VoxelGrid(vg.GetOrigin(), vg.GetDim(), vg.GetVoxSize(), false);
+        Eigen::Vector3d o = vg.GetOrigin();
+        Eigen::Vector3i d = vg.GetDim();
+        double vs = vg.GetVoxSize();
+        voxel_grid_curr_ = ::voxel_grid_util::VoxelGrid(o, d, vs, false);
         ClearVoxelsCenter();
       }
       ::Eigen::Vector3d pos_curr_local = vg.GetCoordLocal(pos_curr);
@@ -558,7 +608,7 @@ void MapBuilder::ClearLine(::voxel_grid_util::VoxelGrid &vg_curr,
 
     // Check against OBSTACLES grid (contains both Walls and Drones)
     bool line_clear = ::path_finding_util::IsLineClear(
-        start_f, end, vg_obstacles, max_dist_raycast, collision_pt, visited_points);
+      start_f, end, vg_obstacles, max_dist_raycast, collision_pt, visited_points);
 
     if (!line_clear) {
       // We hit something (Wall or Drone)

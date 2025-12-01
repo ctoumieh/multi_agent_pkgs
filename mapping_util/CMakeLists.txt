@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(mapping_util)
 
 # add_compile_options(-g) # compile options for debugging
-add_compile_options(-O3 -flto -march=native)
+add_compile_options(-O3 -march=native)
 
 find_package(ament_cmake REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -13,8 +13,10 @@ find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(env_builder_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(path_finding_util REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(depth_estimation_ros2 REQUIRED)
 
 set(DEPENDENCIES
   rclcpp
@@ -22,7 +24,9 @@ set(DEPENDENCIES
   sensor_msgs
   env_builder_msgs
   tf2_ros
+  tf2_geometry_msgs
   visualization_msgs
+  depth_estimation_ros2
 )
 
 include_directories(include/mapping_util ${VOXEL_GRID_UTIL_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${PATH_FINDING_UTIL_INCLUDE_DIRS})

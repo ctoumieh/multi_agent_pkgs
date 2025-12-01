@@ -12,7 +12,7 @@
 #include <env_builder_msgs/msg/voxel_grid_stamped.hpp>
 #include <env_builder_msgs/srv/get_voxel_grid.hpp>
 #include <iostream>
-#include <fstream> // Added for file saving
+#include <fstream> 
 #include <mutex>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -20,9 +20,11 @@
 #include <string>
 #include <vector>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <pcl_ros/transforms.hpp>
 #include <chrono>
 #include <filesystem>
+#include <pcl/common/transforms.h>
+#include <numeric>
+#include <cmath>
 
 // Include the service for real vision
 #include "depth_estimation_ros2/srv/get_camera_info.hpp"
