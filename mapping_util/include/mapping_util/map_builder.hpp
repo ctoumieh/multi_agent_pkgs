@@ -76,8 +76,9 @@ private:
   void ClearVoxelsCenter();
   void TfCallback(const ::tf2_msgs::msg::TFMessage::SharedPtr msg);
 
-  // New stats saving function
   void SaveAndDisplayCompTime(::std::vector<double> &comp_time, ::std::string &filename);
+
+  void DisplayCompTime(::std::vector<double> &comp_time);
 
   void PublishFrustum(const ::geometry_msgs::msg::TransformStamped &tf_stamped);
   void OnShutdown();
