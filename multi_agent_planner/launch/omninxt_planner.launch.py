@@ -22,6 +22,20 @@ def launch_nodes(context, *args, **kwargs):
     except Exception as e:
         raise RuntimeError(f"Failed to parse start_state or goal_position: {e}")
 
+    use_vision_str = LaunchConfiguration('use_vision').perform(context)
+    use_vision = use_vision_str.lower() in ['true', '1', 'yes']
+
+    pointcloud_topic = LaunchConfiguration('pointcloud_topic').perform(context) 
+
+    agent_frame = LaunchConfiguration('agent_frame').perform(context)
+    swarm_frames_str = LaunchConfiguration('swarm_frames').perform(context)
+
+    try:
+        # Convert string representation of list "['a','b']" to python list
+        swarm_frames = ast.literal_eval(swarm_frames_str)
+    except Exception as e:
+        raise RuntimeError(f"Failed to parse swarm_frames: {e}")
+
     # Config file paths
     config_mapper = os.path.join(
         get_package_share_directory('mapping_util'),
@@ -59,7 +73,12 @@ def launch_nodes(context, *args, **kwargs):
                 {'potential_dist': potential_dist},
                 {'potential_dist_max': potential_dist_max},
                 {'potential_speed_max': potential_speed_max},
-                {'free_grid': free_grid}
+                {'free_grid': free_grid},
+                {'use_vision': use_vision},
+                {'pointcloud_topic': pointcloud_topic},
+                {'agent_frame': agent_frame},
+                {'swarm_frames': swarm_frames},
+                {'filter_radius': 0.2}
             ],
             # prefix=['xterm -fa default -fs 10 -xrm "XTerm*selectToClipboard: true" -e gdb -ex run --args'],
             # prefix=['xterm -fa default -fs 10 -hold -e'],
@@ -106,6 +125,18 @@ def generate_launch_description():
         'goal_position',
         default_value='[1.0,1.0,1.0]'
     ))
+    ld.add_action(DeclareLaunchArgument(
+        'use_vision',
+        default_value='False',
+        description='Whether to use real vision (DepthEstimation) or simulation'
+    ))
+    ld.add_action(DeclareLaunchArgument(
+        'pointcloud_topic',
+        default_value='/depth/pointcloud/combined',
+        description='Topic name for the input pointcloud when use_vision is True'
+    ))
+    ld.add_action(DeclareLaunchArgument('agent_frame', default_value='agent_0'))
+    ld.add_action(DeclareLaunchArgument('swarm_frames', default_value="['agent_0']"))
 
     # Add node actions via opaque function
     ld.add_action(OpaqueFunction(function=launch_nodes))

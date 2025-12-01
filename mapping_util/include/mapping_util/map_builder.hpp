@@ -17,6 +17,12 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <stdlib.h>
 #include <string>
+#include <vector>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+// Include the service for real vision
+#include "depth_estimation_ros2/srv/get_camera_info.hpp"
+#include "depth_estimation_ros2/msg/camera_info.hpp"
 
 namespace mapping_util {
 class MapBuilder : public ::rclcpp::Node {
@@ -31,114 +37,103 @@ private:
   // initialize ros parameters
   void InitializeRosParameters();
 
-  // callback for when we receive the map from the environment
+  // callback for when we receive the map from the environment (SIMULATION)
   void EnvironmentVoxelGridCallback(
       const ::env_builder_msgs::msg::VoxelGridStamped::SharedPtr vg_msg);
 
-  // merge 2 grids together; the unknown voxels of the new grid are replaced
-  // with the voxels of the old grid
+  // callback for when we receive pointclouds (VISION)
+  void PointCloudCallback(
+      const ::sensor_msgs::msg::PointCloud2::SharedPtr msg);
+
+  // merge 2 grids together
   ::voxel_grid_util::VoxelGrid
   MergeVoxelGrids(const ::voxel_grid_util::VoxelGrid &vg_old,
                   const ::voxel_grid_util::VoxelGrid &vg_new);
 
-  // raycast from a point inside the voxel grid (local coordinates) to clear all
-  // the voxels in the way
+  // Sim Raycaster
   void RaycastAndClear(::voxel_grid_util::VoxelGrid &vg,
                        const ::Eigen::Vector3d &start);
 
-  // inflate all the unknown voxels by the inflation distance and set all the
-  // voxels that are free within that inflation distance to unknown
+  // Vision Raycaster (The smart one)
+  void RaycastAndClear(::voxel_grid_util::VoxelGrid &vg_curr,
+                       const ::voxel_grid_util::VoxelGrid &vg_obstacles,
+                       const ::voxel_grid_util::VoxelGrid &vg_accum,
+                       const ::voxel_grid_util::VoxelGrid &vg_drone,
+                       const ::Eigen::Vector3d &start);
+
   void SetUncertainToUnknown(::voxel_grid_util::VoxelGrid &vg);
 
-  // clear the line along the start and the end in the voxel
+  // Sim ClearLine
   void ClearLine(::voxel_grid_util::VoxelGrid &vg,
                  ::voxel_grid_util::VoxelGrid &vg_final,
                  const ::Eigen::Vector3d &start, const ::Eigen::Vector3d &end);
 
-  // set the voxels around the center to free in the first voxel grid at the
-  // startup in order to be able to generate safe corridors
+  // Vision ClearLine
+  void ClearLine(::voxel_grid_util::VoxelGrid &vg_curr,
+                 const ::voxel_grid_util::VoxelGrid &vg_obstacles,
+                 const ::voxel_grid_util::VoxelGrid &vg_accum,
+                 const ::voxel_grid_util::VoxelGrid &vg_drone,
+                 const ::Eigen::Vector3d &start, const ::Eigen::Vector3d &end);
+
   void ClearVoxelsCenter();
-
-  // callback for when we receive the new agent position
   void TfCallback(const ::tf2_msgs::msg::TFMessage::SharedPtr msg);
-
-  // display computation time
   void DisplayCompTime(::std::vector<double> &comp_time);
-
-  // publish camera frustum
   void PublishFrustum(const ::geometry_msgs::msg::TransformStamped &tf_stamped);
-
-  // function to execute on the shutdown of the node to save computation
-  // time statistics
   void OnShutdown();
 
   /*-------------- member variables ---------------*/
-  /* ROS parameters */
-  // environment voxel grid topic name
+  // ROS parameters
   ::std::string env_vg_topic_;
-  // agent id
+  ::std::string pointcloud_topic_;
   int id_;
-  // voxel grid range
   ::std::vector<double> voxel_grid_range_;
-  // world frame name
+  double voxel_size_;
   ::std::string world_frame_;
-  // agent frame name
   ::std::string agent_frame_;
-  // whether to free all voxels that are not occupied (no unknowns); if not then
-  // we have to raycast to free the voxels
   bool free_grid_;
-  // inflation distance
+  int min_points_per_voxel_;
+  int voxel_min_val_;
+  int voxel_max_val_;
+  int occupied_threshold_;
+  int free_threshold_;
   double inflation_dist_;
-  // potential distance params 
   double potential_dist_;
   double potential_dist_max_;
   double potential_speed_max_;
   double potential_pow_;
-  // variables for camera fov angles (in radians)
-  double fov_x_, fov_y_;
-  // offset for fov_y so that it is tilted up
-  double fov_y_offset_;
-  // frustum length/size
-  double frustum_length_;
-  // variable to limit fov
+  double fov_x_, fov_y_, fov_y_offset_, frustum_length_;
   bool limited_fov_;
 
-  /* publishers/subscribers */
-  // environment voxel grid subscriber
-  ::rclcpp::Subscription<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr
-      voxel_grid_sub_;
-  // tf buffer
+  // New Parameters
+  bool use_vision_;
+  std::vector<std::string> swarm_frames_;
+  double filter_radius_;
+
+  // Publishers/Subscribers
+  ::rclcpp::Subscription<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr voxel_grid_sub_;
+  ::rclcpp::Subscription<::sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
+
+  // Service Client
+  ::rclcpp::Client<::depth_estimation_ros2::srv::GetCameraInfo>::SharedPtr camera_info_client_;
+
   ::std::shared_ptr<::tf2_ros::Buffer> tf_buffer_;
-  // tf listener to get the agent position
   ::std::shared_ptr<::tf2_ros::TransformListener> tf_listener_;
-  // tf subscriber
   ::rclcpp::Subscription<::tf2_msgs::msg::TFMessage>::SharedPtr tf_subscriber_;
-  // voxel grid publisher
-  ::rclcpp::Publisher<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr
-      voxel_grid_pub_;
-  // camera frustum publisher
-  ::rclcpp::Publisher<::visualization_msgs::msg::MarkerArray>::SharedPtr
-      frustum_pub_;
+  ::rclcpp::Publisher<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr voxel_grid_pub_;
+  ::rclcpp::Publisher<::visualization_msgs::msg::MarkerArray>::SharedPtr frustum_pub_;
 
-  // current position of the agent
+  // State variables
   ::std::vector<double> pos_curr_;
-
-  // current attitude of the camera of the agent
   ::Eigen::Matrix3d rot_mat_cam_;
-
-  // variable to indicate that the first transform was recieved
   bool first_transform_received_;
-
-  // current voxel grid
   ::voxel_grid_util::VoxelGrid voxel_grid_curr_;
-
-  /* mutexes for memory management - unnecessary for now because the callbacks
-   * are executed sequentially but in case we use MultiThreadedExecutor in the
-   * future */
-  // mutex for position update
   ::std::mutex pos_mutex_;
 
-  // raycast computation time
+  // Camera Info Storage
+  std::vector<depth_estimation_ros2::msg::CameraInfo> cameras_;
+  std::vector<Eigen::Isometry3d> cameras_in_local_grid_;
+
+  // Timing
   ::std::vector<double> raycast_comp_time_;
   ::std::vector<double> merge_comp_time_;
   ::std::vector<double> uncertain_comp_time_;
@@ -148,11 +143,9 @@ private:
   ::std::vector<double> tot_comp_time_;
 };
 
-// convert ::env_builder_msgs::msg::VoxelGrid to ::voxel_grid_util::VoxelGrid
 ::voxel_grid_util::VoxelGrid
 ConvertVGMsgToVGUtil(::env_builder_msgs::msg::VoxelGrid &vg_msg);
 
-// convert ::voxel_grid_util::VoxelGrid to ::env_builder_msgs::msg::VoxelGrid
 ::env_builder_msgs::msg::VoxelGrid
 ConvertVGUtilToVGMsg(::voxel_grid_util::VoxelGrid &vg);
 } // namespace mapping_util
