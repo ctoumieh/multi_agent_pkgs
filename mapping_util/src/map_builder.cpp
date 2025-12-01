@@ -1,5 +1,6 @@
 #include "mapping_util/map_builder.hpp"
 #include <pcl_ros/transforms.hpp>
+#include <chrono>
 
 namespace mapping_util {
 MapBuilder::MapBuilder() : ::rclcpp::Node("map_builder") {
@@ -33,10 +34,7 @@ MapBuilder::MapBuilder() : ::rclcpp::Node("map_builder") {
           "/depth_estimation_node/get_camera_info");
 
       while (!camera_info_client_->wait_for_service(std::chrono::seconds(1))) {
-        if (!rclcpp::ok()) {
-            RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for service.");
-            return;
-        }
+        if (!rclcpp::ok()) return;
         RCLCPP_INFO(this->get_logger(), "Vision service not available, waiting...");
       }
 
@@ -89,6 +87,7 @@ void MapBuilder::DeclareRosParameters() {
   declare_parameter("frustum_length", 1.0);
   declare_parameter("limited_fov", true);
   declare_parameter("use_vision", false);
+  declare_parameter("save_stats", false); // Default to false
   declare_parameter("swarm_frames", std::vector<std::string>());
   declare_parameter("filter_radius", 0.6);
 }
@@ -125,6 +124,7 @@ void MapBuilder::InitializeRosParameters() {
   frustum_length_ = get_parameter("frustum_length").as_double();
   limited_fov_ = get_parameter("limited_fov").as_bool();
   use_vision_ = get_parameter("use_vision").as_bool();
+  save_stats_ = get_parameter("save_stats").as_bool();
   swarm_frames_ = get_parameter("swarm_frames").as_string_array();
   filter_radius_ = get_parameter("filter_radius").as_double();
 
@@ -139,6 +139,8 @@ void MapBuilder::InitializeRosParameters() {
 void MapBuilder::PointCloudCallback(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   if (!first_transform_received_) return;
+
+  auto t_start_total = std::chrono::high_resolution_clock::now();
 
   // 1. Get Drone Transform
   geometry_msgs::msg::TransformStamped transform_stamped;
@@ -170,8 +172,6 @@ void MapBuilder::PointCloudCallback(
     ClearVoxelsCenter();
   }
 
-  auto t_start_wall_global = ::std::chrono::high_resolution_clock::now();
-
   // 3. Process Cloud
   sensor_msgs::msg::PointCloud2 transformed_cloud_msg;
   Eigen::Matrix4f transform =
@@ -181,11 +181,13 @@ void MapBuilder::PointCloudCallback(
   pcl::PointCloud<pcl::PointXYZ> cloud;
   pcl::fromROSMsg(transformed_cloud_msg, cloud);
 
-  // 4. Initialize Temp Grids for Counting
+  // 4. Initialize Temp Grids
+  ::voxel_grid_util::VoxelGrid vg_obstacles(
+      voxel_grid_curr_.GetOrigin(), voxel_grid_curr_.GetDim(),
+      voxel_grid_curr_.GetVoxSize(), true);
   ::voxel_grid_util::VoxelGrid vg_accum(
       voxel_grid_curr_.GetOrigin(), voxel_grid_curr_.GetDim(),
       voxel_grid_curr_.GetVoxSize(), true);
-
   ::voxel_grid_util::VoxelGrid vg_drone(
       voxel_grid_curr_.GetOrigin(), voxel_grid_curr_.GetDim(),
       voxel_grid_curr_.GetVoxSize(), true);
@@ -220,18 +222,14 @@ void MapBuilder::PointCloudCallback(
     }
   }
 
-  // 6. Create Binary Obstacle Map for Raycaster Stopping
-  ::voxel_grid_util::VoxelGrid vg_obstacles(
-      voxel_grid_curr_.GetOrigin(), voxel_grid_curr_.GetDim(),
-      voxel_grid_curr_.GetVoxSize(), true);
-
+  // 6. Create Obstacle Map
   Eigen::Vector3i dim = vg_accum.GetDim();
   for (int i = 0; i < dim[0]; i++) {
     for (int j = 0; j < dim[1]; j++) {
       for (int k = 0; k < dim[2]; k++) {
          Eigen::Vector3i coord(i, j, k);
          if (vg_accum.GetVoxelInt(coord) >= min_points_per_voxel_) {
-             vg_obstacles.SetVoxelInt(coord, 100); // Mark as HIT
+             vg_obstacles.SetVoxelInt(coord, 100);
          } else {
              vg_obstacles.SetVoxelInt(coord, 0);
          }
@@ -258,16 +256,18 @@ void MapBuilder::PointCloudCallback(
     cameras_in_local_grid_.push_back(cam_pose_final);
   }
 
-  // 8. Raycast (Border Sweep)
+  // 8. Raycast
   ::Eigen::Vector3d pos_curr_local = voxel_grid_curr_.GetCoordLocal(pos_curr);
-  auto t_start_wall = ::std::chrono::high_resolution_clock::now();
+  auto t_start_ray = ::std::chrono::high_resolution_clock::now();
 
   RaycastAndClear(voxel_grid_curr_, vg_obstacles, vg_accum, vg_drone, pos_curr_local);
 
-  auto t_end_wall = ::std::chrono::high_resolution_clock::now();
-  raycast_comp_time_.push_back(::std::chrono::duration_cast<::std::chrono::nanoseconds>(t_end_wall - t_start_wall).count() * 1e-6);
+  auto t_end_ray = ::std::chrono::high_resolution_clock::now();
+  raycast_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_ray - t_start_ray).count());
 
-  // 9. Publish
+  // 9. Thresholding & Publish
+  // (Assuming merge happens in Raycast for vision logic as it modifies vg_curr directly)
+
   ::voxel_grid_util::VoxelGrid voxel_grid(voxel_grid_curr_.GetOrigin(),
                                           voxel_grid_curr_.GetDim(),
                                           voxel_grid_curr_.GetVoxSize(), true);
@@ -288,10 +288,25 @@ void MapBuilder::PointCloudCallback(
     }
   }
 
+  // SetUncertainToUnknown
+  auto t_start_unk = ::std::chrono::high_resolution_clock::now();
   SetUncertainToUnknown(voxel_grid);
-  voxel_grid.InflateObstacles(inflation_dist_);
-  voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
+  auto t_end_unk = ::std::chrono::high_resolution_clock::now();
+  uncertain_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_unk - t_start_unk).count());
 
+  // Inflate
+  auto t_start_inf = ::std::chrono::high_resolution_clock::now();
+  voxel_grid.InflateObstacles(inflation_dist_);
+  auto t_end_inf = ::std::chrono::high_resolution_clock::now();
+  inflate_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_inf - t_start_inf).count());
+
+  // Potential Field
+  auto t_start_pot = ::std::chrono::high_resolution_clock::now();
+  voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
+  auto t_end_pot = ::std::chrono::high_resolution_clock::now();
+  potential_field_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_pot - t_start_pot).count());
+
+  // Publish
   ::env_builder_msgs::msg::VoxelGrid vg_final_msg = ConvertVGUtilToVGMsg(voxel_grid);
   ::env_builder_msgs::msg::VoxelGridStamped vg_final_msg_stamped;
   vg_final_msg_stamped.voxel_grid = vg_final_msg;
@@ -300,7 +315,11 @@ void MapBuilder::PointCloudCallback(
   vg_final_msg_stamped.header.frame_id = world_frame_;
   voxel_grid_pub_->publish(vg_final_msg_stamped);
 
-  // Shift logic (Standard)
+  // Total Time
+  auto t_end_total = ::std::chrono::high_resolution_clock::now();
+  tot_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_total - t_start_total).count());
+
+  // Shift logic
   Eigen::Vector3i drone_voxel_idx = voxel_grid_curr_.GetVoxel(pos_curr);
   Eigen::Vector3i center_voxel_idx = dim / 2;
   Eigen::Vector3i shift = drone_voxel_idx - center_voxel_idx;
@@ -309,6 +328,7 @@ void MapBuilder::PointCloudCallback(
     Eigen::Vector3d old_origin = voxel_grid_curr_.GetOrigin();
     Eigen::Vector3d new_origin = old_origin + shift.cast<double>() * voxel_size_;
     ::voxel_grid_util::VoxelGrid shifted_grid(new_origin, dim, voxel_size_, true);
+
     for (int i = 0; i < dim[0]; i++) {
       for (int j = 0; j < dim[1]; j++) {
         for (int k = 0; k < dim[2]; k++) {
@@ -330,6 +350,7 @@ void MapBuilder::EnvironmentVoxelGridCallback(
   if (first_transform_received_) {
     auto t_start_wall_global = ::std::chrono::high_resolution_clock::now();
     double voxel_size = vg_msg->voxel_grid.voxel_size;
+
     ::std::array<double, 3> origin_grid = vg_msg->voxel_grid.origin;
     ::Eigen::Vector3d origin;
     pos_mutex_.lock();
@@ -339,12 +360,15 @@ void MapBuilder::EnvironmentVoxelGridCallback(
     origin[2] = (pos_curr_[2] - voxel_grid_range_[2] / 2);
     pos_mutex_.unlock();
     for(int i=0; i<3; i++) origin[i] = round((origin[i] - origin_grid[i]) / voxel_size) * voxel_size + origin_grid[i];
+
     ::Eigen::Vector3i dim;
     dim[0] = floor(voxel_grid_range_[0] / voxel_size);
     dim[1] = floor(voxel_grid_range_[1] / voxel_size);
     dim[2] = floor(voxel_grid_range_[2] / voxel_size);
+
     ::std::vector<int> start_idx;
     for(int i=0; i<3; i++) start_idx.push_back(::std::round((origin[i] - origin_grid[i]) / voxel_size));
+
     ::voxel_grid_util::VoxelGrid vg(origin, dim, voxel_size, free_grid_);
     ::std::array<uint32_t, 3> dim_env = vg_msg->voxel_grid.dimension;
 
@@ -371,33 +395,55 @@ void MapBuilder::EnvironmentVoxelGridCallback(
       auto t_start_wall = ::std::chrono::high_resolution_clock::now();
       RaycastAndClear(vg, pos_curr_local);
       auto t_end_wall = ::std::chrono::high_resolution_clock::now();
-      raycast_comp_time_.push_back(::std::chrono::duration_cast<::std::chrono::nanoseconds>(t_end_wall - t_start_wall).count() * 1e-6);
+      raycast_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
+
       t_start_wall = ::std::chrono::high_resolution_clock::now();
       voxel_grid_curr_ = MergeVoxelGrids(voxel_grid_curr_, vg);
       t_end_wall = ::std::chrono::high_resolution_clock::now();
-      merge_comp_time_.push_back(::std::chrono::duration_cast<::std::chrono::nanoseconds>(t_end_wall - t_start_wall).count() * 1e-6);
+      merge_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
     } else {
       voxel_grid_curr_ = vg;
     }
+
     ::voxel_grid_util::VoxelGrid voxel_grid = voxel_grid_curr_;
+
+    auto t_start_wall = ::std::chrono::high_resolution_clock::now();
     SetUncertainToUnknown(voxel_grid);
+    auto t_end_wall = ::std::chrono::high_resolution_clock::now();
+    uncertain_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
+
+    t_start_wall = ::std::chrono::high_resolution_clock::now();
     voxel_grid.InflateObstacles(inflation_dist_);
+    t_end_wall = ::std::chrono::high_resolution_clock::now();
+    inflate_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
+
+    t_start_wall = ::std::chrono::high_resolution_clock::now();
     voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
+    t_end_wall = ::std::chrono::high_resolution_clock::now();
+    potential_field_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
+
     ::std::vector<Eigen::Vector3d> position_vec, velocity_vec, dimension_vec;
     for (const auto &obs : vg_msg->voxel_grid.dyn_obstacles) {
         position_vec.push_back(Eigen::Vector3d(obs.position[0] + origin_grid[0] - origin[0], obs.position[1] + origin_grid[1] - origin[1], obs.position[2] + origin_grid[2] - origin[2]));
         velocity_vec.push_back(Eigen::Vector3d(obs.velocity[0], obs.velocity[1], obs.velocity[2]));
         dimension_vec.push_back(Eigen::Vector3d(obs.dimension[0], obs.dimension[1], obs.dimension[2]));
     }
+
+    t_start_wall = ::std::chrono::high_resolution_clock::now();
     voxel_grid.CreateDynamicObstaclesPotentialField(position_vec, velocity_vec, dimension_vec, potential_dist_, potential_dist_max_, potential_speed_max_, 50);
+    t_end_wall = ::std::chrono::high_resolution_clock::now();
+    dyn_obst_field_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
+
     ::env_builder_msgs::msg::VoxelGrid vg_final_msg = ConvertVGUtilToVGMsg(voxel_grid);
     ::env_builder_msgs::msg::VoxelGridStamped vg_final_msg_stamped;
     vg_final_msg_stamped.voxel_grid = vg_final_msg;
     vg_final_msg_stamped.voxel_grid.voxel_size = voxel_size;
     vg_final_msg_stamped.header.stamp = now();
     vg_final_msg_stamped.header.frame_id = world_frame_;
+
     auto t_end_wall_global = ::std::chrono::high_resolution_clock::now();
-    tot_comp_time_.push_back(::std::chrono::duration_cast<::std::chrono::nanoseconds>(t_end_wall_global - t_start_wall_global).count() * 1e-6);
+    tot_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall_global - t_start_wall_global).count());
+
     voxel_grid_pub_->publish(vg_final_msg_stamped);
   }
 }
@@ -415,6 +461,7 @@ void MapBuilder::RaycastAndClear(::voxel_grid_util::VoxelGrid &vg_curr,
   ::Eigen::Vector3d origin = vg_curr.GetOrigin();
   ::Eigen::Vector3i dim = vg_curr.GetDim();
 
+  // Border Loops
   ::std::vector<int> k_vec = {0, dim(2) - 1};
   for (int i = 0; i < dim(0); i++) {
     for (int j = 0; j < dim(1); j++) {
@@ -738,14 +785,45 @@ void MapBuilder::DisplayCompTime(::std::vector<double> &comp_time) {
   ::std::cout << ::std::endl << "min: " << min_t << ::std::endl;
 }
 
+void MapBuilder::SaveAndDisplayCompTime(::std::vector<double> &comp_time, ::std::string &filename) {
+  if (save_stats_) {
+    ::std::ofstream myfile;
+    myfile.open(filename);
+    for (int i = 0; i < int(comp_time.size()); i++) {
+      myfile << ::std::fixed << comp_time[i] << ",";
+    }
+    myfile.close();
+  }
+
+  // Also print to console
+  std::cout << filename << ": ";
+  DisplayCompTime(comp_time);
+}
+
 void MapBuilder::OnShutdown() {
-  ::std::cout << ::std::endl << "raycast: "; DisplayCompTime(raycast_comp_time_);
-  ::std::cout << ::std::endl << "merge: "; DisplayCompTime(merge_comp_time_);
-  ::std::cout << ::std::endl << "uncertain: "; DisplayCompTime(uncertain_comp_time_);
-  ::std::cout << ::std::endl << "inflate: "; DisplayCompTime(inflate_comp_time_);
-  ::std::cout << ::std::endl << "potential field: "; DisplayCompTime(potential_field_comp_time_);
-  ::std::cout << ::std::endl << "dynamic obstacles field: "; DisplayCompTime(dyn_obst_field_comp_time_);
-  ::std::cout << ::std::endl << "total: "; DisplayCompTime(tot_comp_time_);
+  // Save all metrics using the helper function (saves file AND prints stats)
+  std::string filename;
+
+  filename = "comp_time_raycast_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(raycast_comp_time_, filename);
+
+  filename = "comp_time_merge_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(merge_comp_time_, filename);
+
+  filename = "comp_time_uncertain_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(uncertain_comp_time_, filename);
+
+  filename = "comp_time_inflate_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(inflate_comp_time_, filename);
+
+  filename = "comp_time_potential_field_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(potential_field_comp_time_, filename);
+
+  filename = "comp_time_dyn_obst_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(dyn_obst_field_comp_time_, filename);
+
+  filename = "comp_time_total_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(tot_comp_time_, filename);
 }
 
 ::voxel_grid_util::VoxelGrid

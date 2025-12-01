@@ -12,6 +12,7 @@
 #include <env_builder_msgs/msg/voxel_grid_stamped.hpp>
 #include <env_builder_msgs/srv/get_voxel_grid.hpp>
 #include <iostream>
+#include <fstream> // Added for file saving
 #include <mutex>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -31,21 +32,15 @@ public:
 
 private:
   /*-------------- methods ---------------*/
-  // declare ros parameters
   void DeclareRosParameters();
-
-  // initialize ros parameters
   void InitializeRosParameters();
 
-  // callback for when we receive the map from the environment (SIMULATION)
   void EnvironmentVoxelGridCallback(
       const ::env_builder_msgs::msg::VoxelGridStamped::SharedPtr vg_msg);
 
-  // callback for when we receive pointclouds (VISION)
   void PointCloudCallback(
       const ::sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
-  // merge 2 grids together
   ::voxel_grid_util::VoxelGrid
   MergeVoxelGrids(const ::voxel_grid_util::VoxelGrid &vg_old,
                   const ::voxel_grid_util::VoxelGrid &vg_new);
@@ -54,7 +49,7 @@ private:
   void RaycastAndClear(::voxel_grid_util::VoxelGrid &vg,
                        const ::Eigen::Vector3d &start);
 
-  // Vision Raycaster (The smart one)
+  // Vision Raycaster
   void RaycastAndClear(::voxel_grid_util::VoxelGrid &vg_curr,
                        const ::voxel_grid_util::VoxelGrid &vg_obstacles,
                        const ::voxel_grid_util::VoxelGrid &vg_accum,
@@ -77,12 +72,14 @@ private:
 
   void ClearVoxelsCenter();
   void TfCallback(const ::tf2_msgs::msg::TFMessage::SharedPtr msg);
-  void DisplayCompTime(::std::vector<double> &comp_time);
+
+  // New stats saving function
+  void SaveAndDisplayCompTime(::std::vector<double> &comp_time, ::std::string &filename);
+
   void PublishFrustum(const ::geometry_msgs::msg::TransformStamped &tf_stamped);
   void OnShutdown();
 
   /*-------------- member variables ---------------*/
-  // ROS parameters
   ::std::string env_vg_topic_;
   ::std::string pointcloud_topic_;
   int id_;
@@ -106,14 +103,13 @@ private:
 
   // New Parameters
   bool use_vision_;
+  bool save_stats_; // Flag to enable saving
   std::vector<std::string> swarm_frames_;
   double filter_radius_;
 
-  // Publishers/Subscribers
   ::rclcpp::Subscription<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr voxel_grid_sub_;
   ::rclcpp::Subscription<::sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
 
-  // Service Client
   ::rclcpp::Client<::depth_estimation_ros2::srv::GetCameraInfo>::SharedPtr camera_info_client_;
 
   ::std::shared_ptr<::tf2_ros::Buffer> tf_buffer_;
@@ -122,18 +118,15 @@ private:
   ::rclcpp::Publisher<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr voxel_grid_pub_;
   ::rclcpp::Publisher<::visualization_msgs::msg::MarkerArray>::SharedPtr frustum_pub_;
 
-  // State variables
   ::std::vector<double> pos_curr_;
   ::Eigen::Matrix3d rot_mat_cam_;
   bool first_transform_received_;
   ::voxel_grid_util::VoxelGrid voxel_grid_curr_;
   ::std::mutex pos_mutex_;
 
-  // Camera Info Storage
   std::vector<depth_estimation_ros2::msg::CameraInfo> cameras_;
   std::vector<Eigen::Isometry3d> cameras_in_local_grid_;
 
-  // Timing
   ::std::vector<double> raycast_comp_time_;
   ::std::vector<double> merge_comp_time_;
   ::std::vector<double> uncertain_comp_time_;

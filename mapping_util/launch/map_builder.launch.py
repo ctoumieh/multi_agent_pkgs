@@ -10,7 +10,7 @@ def generate_launch_description():
     config = os.path.join(
         get_package_share_directory('mapping_util'),
         'config',
-        'map_builder_default_config.yaml'
+        'map_builder_omninxt_config.yaml'
     )
 
     # create node

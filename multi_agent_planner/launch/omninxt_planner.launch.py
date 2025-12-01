@@ -55,7 +55,7 @@ def launch_nodes(context, *args, **kwargs):
     potential_speed_max = 2.0
     use_mapping_util = True
     free_grid = False
-    save_stats = False
+    save_stats = True
     planner_active = False
 
     nodes = []
@@ -78,7 +78,8 @@ def launch_nodes(context, *args, **kwargs):
                 {'pointcloud_topic': pointcloud_topic},
                 {'agent_frame': agent_frame},
                 {'swarm_frames': swarm_frames},
-                {'filter_radius': 0.2}
+                {'filter_radius': 0.2},
+                {'save_stats': save_stats}
             ],
             # prefix=['xterm -fa default -fs 10 -xrm "XTerm*selectToClipboard: true" -e gdb -ex run --args'],
             # prefix=['xterm -fa default -fs 10 -hold -e'],
