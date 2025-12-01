@@ -2091,8 +2091,9 @@ void Agent::SaveAndDisplayCompTime(::std::vector<double> &comp_time,
                                    ::std::string &filename) {
   if (save_stats_) {
     // save file
+    ::std::string filename_full = "/tmp/planner_logs/" + filename;
     ::std::ofstream myfile;
-    myfile.open(filename);
+    myfile.open(filename_full);
     for (int i = 0; i < int(comp_time.size()); i++) {
       myfile << ::std::fixed << comp_time[i] << ",";
     }
@@ -2121,7 +2122,7 @@ void Agent::SaveAndDisplayCompTime(::std::vector<double> &comp_time,
 void Agent::SaveStateHistory() {
   if (save_stats_) {
     // one each row, first save the time then the state
-    ::std::string filename = "state_hist_" + ::std::to_string(id_) + ".csv";
+    ::std::string filename = "/tmp/planner_logs/state_hist_" + ::std::to_string(id_) + ".csv";
     ::std::ofstream myfile;
     myfile.open(filename);
     for (int i = 0; i < int(state_hist_.size()); i++) {
@@ -2191,7 +2192,7 @@ void Agent::SaveAndDisplayCommunicationLatency() {
               << ::std::endl;
 
   if (save_stats_) {
-    ::std::string filename = "com_latency_" + ::std::to_string(id_) + ".csv";
+    ::std::string filename = "/tmp/planner_logs/com_latency_" + ::std::to_string(id_) + ".csv";
     ::std::ofstream myfile;
     myfile.open(filename);
     for (int i = 0; i < n_rob_; i++) {
@@ -2656,6 +2657,13 @@ void Agent::PublishVoxelGrid() {
 }
 
 void Agent::OnShutdown() {
+  ::std::string log_dir = "/tmp/planner_logs/";
+  try {
+    ::std::filesystem::create_directories(log_dir);
+  } catch (const ::std::exception &e) {
+    ::std::cerr << "Error creating log directory: " << e.what() << ::std::endl;
+  }
+
   // save computation time to csv and display its mean, min, max and std dev
   ::std::string filename = "comp_time_sc_" + ::std::to_string(id_) + ".csv";
   SaveAndDisplayCompTime(comp_time_sc_, filename);

@@ -1,6 +1,4 @@
 #include "mapping_util/map_builder.hpp"
-#include <pcl_ros/transforms.hpp>
-#include <chrono>
 
 namespace mapping_util {
 MapBuilder::MapBuilder() : ::rclcpp::Node("map_builder") {
@@ -787,8 +785,9 @@ void MapBuilder::DisplayCompTime(::std::vector<double> &comp_time) {
 
 void MapBuilder::SaveAndDisplayCompTime(::std::vector<double> &comp_time, ::std::string &filename) {
   if (save_stats_) {
+    ::std::string filename_full = "/tmp/planner_logs/" + filename;
     ::std::ofstream myfile;
-    myfile.open(filename);
+    myfile.open(filename_full);
     for (int i = 0; i < int(comp_time.size()); i++) {
       myfile << ::std::fixed << comp_time[i] << ",";
     }
@@ -801,6 +800,13 @@ void MapBuilder::SaveAndDisplayCompTime(::std::vector<double> &comp_time, ::std:
 }
 
 void MapBuilder::OnShutdown() {
+  ::std::string log_dir = "/tmp/planner_logs/";
+  try {
+    ::std::filesystem::create_directories(log_dir);
+  } catch (const ::std::exception &e) {
+    ::std::cerr << "Error creating log directory: " << e.what() << ::std::endl;
+  }
+
   // Save all metrics using the helper function (saves file AND prints stats)
   std::string filename;
 

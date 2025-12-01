@@ -20,6 +20,9 @@
 #include <string>
 #include <vector>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <pcl_ros/transforms.hpp>
+#include <chrono>
+#include <filesystem>
 
 // Include the service for real vision
 #include "depth_estimation_ros2/srv/get_camera_info.hpp"

@@ -17,6 +17,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker.hpp>
+#include <filesystem>
 
 #include "convex_decomp.hpp"
 #include "decomp_ros_msgs/msg/polyhedron_array.hpp"
