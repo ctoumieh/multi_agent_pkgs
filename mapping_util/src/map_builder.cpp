@@ -1,8 +1,5 @@
 #include "map_builder.hpp"
 
-// [NOTE] tf2_eigen include removed to avoid linker ambiguity.
-// We will do the conversion manually below.
-
 namespace mapping_util {
 MapBuilder::MapBuilder() : ::rclcpp::Node("map_builder") {
   DeclareRosParameters();
