@@ -11,7 +11,7 @@
     id: 0 # id of the planning agent
     n_x: 9 # number of state variables (9 for jerk control, 6 for acceleration control
     n_u: 3 # number of control variables (3 for jerk/acceleration control)
-    n_hor: 9 # number of mpc steps
+    n_hor: 12 # number of mpc steps
     dt: 0.1 # step time of the mpc
     path_vel_min: 2.5 # minimum discretization velocity of the path
     path_vel_max: 3.0 # maximum discretization velocity of the path
