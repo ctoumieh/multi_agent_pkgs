@@ -69,7 +69,7 @@ void MapBuilder::DeclareRosParameters() {
   declare_parameter("world_frame", "world");
   declare_parameter("agent_frame", "agent_0");
   declare_parameter("free_grid", true);
-  declare_parameter("min_points_per_voxel", 1);
+  declare_parameter("min_points_per_voxel", 10);
   declare_parameter("voxel_min_val", -5);
   declare_parameter("voxel_max_val", 7);
   declare_parameter("occupied_threshold", 4);
