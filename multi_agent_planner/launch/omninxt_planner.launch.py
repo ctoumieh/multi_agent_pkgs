@@ -73,6 +73,8 @@ def launch_nodes(context, *args, **kwargs):
                 config_mapper,
                 {'id': rob_id},
                 {'voxel_grid_range': voxel_grid_range},
+                {'voxel_size': voxel_size},
+                {'inflation_dist': inflation_dist},
                 {'potential_dist': potential_dist},
                 {'potential_dist_max': potential_dist_max},
                 {'potential_speed_max': potential_speed_max},
