@@ -230,8 +230,8 @@ void MapBuilder::PointCloudCallback(
   const double r_sq = filter_radius_ * filter_radius_;
 
   // Pre-compute grid parameters to avoid repeated virtual calls
-  const Eigen::Vector3d origin = vg_accum.GetOrigin();
-  const Eigen::Vector3i dim = vg_accum.GetDim();
+  Eigen::Vector3d grid_origin = vg_accum.GetOrigin();
+  Eigen::Vector3i grid_dim = vg_accum.GetDim();
   const double vox_size = vg_accum.GetVoxSize();
   const double inv_vox_size = 1.0 / vox_size;
 
@@ -240,12 +240,12 @@ void MapBuilder::PointCloudCallback(
   std::vector<int8_t>& drone_data = vg_drone.GetData();
 
   // Pre-compute bounds for early rejection
-  const double x_min = origin[0], x_max = origin[0] + dim[0] * vox_size;
-  const double y_min = origin[1], y_max = origin[1] + dim[1] * vox_size;
-  const double z_min = origin[2], z_max = origin[2] + dim[2] * vox_size;
+  const double x_min = grid_origin[0], x_max = grid_origin[0] + grid_dim[0] * vox_size;
+  const double y_min = grid_origin[1], y_max = grid_origin[1] + grid_dim[1] * vox_size;
+  const double z_min = grid_origin[2], z_max = grid_origin[2] + grid_dim[2] * vox_size;
 
   const size_t num_points = cloud.points.size();
-  const size_t dim_yz = dim[1] * dim[2];
+  const size_t dim_yz = grid_dim[1] * grid_dim[2];
 
   // Parallel point counting with thread-local accumulators to avoid atomic ops
   const int num_threads = omp_get_max_threads();
@@ -263,6 +263,9 @@ void MapBuilder::PointCloudCallback(
       const auto& point = cloud.points[p];
       const float px = point.x, py = point.y, pz = point.z;
 
+      // Skip NaN points
+      if (std::isnan(px)) continue;
+
       // Early bounds check (skip points outside grid)
       if (px < x_min || px >= x_max ||
           py < y_min || py >= y_max ||
@@ -271,17 +274,17 @@ void MapBuilder::PointCloudCallback(
       }
 
       // Direct integer coordinate calculation (no Eigen overhead)
-      const int i = static_cast<int>((px - origin[0]) * inv_vox_size);
-      const int j = static_cast<int>((py - origin[1]) * inv_vox_size);
-      const int k = static_cast<int>((pz - origin[2]) * inv_vox_size);
+      const int i = static_cast<int>((px - grid_origin[0]) * inv_vox_size);
+      const int j = static_cast<int>((py - grid_origin[1]) * inv_vox_size);
+      const int k = static_cast<int>((pz - grid_origin[2]) * inv_vox_size);
 
       // Bounds check (should rarely fail after early check, but be safe)
-      if (i < 0 || i >= dim[0] || j < 0 || j >= dim[1] || k < 0 || k >= dim[2]) {
+      if (i < 0 || i >= grid_dim[0] || j < 0 || j >= grid_dim[1] || k < 0 || k >= grid_dim[2]) {
         continue;
       }
 
       // Direct index calculation
-      const size_t idx = i * dim_yz + j * dim[2] + k;
+      const size_t idx = i * dim_yz + j * grid_dim[2] + k;
       my_accum[idx]++;
 
       // Check if point belongs to another drone
