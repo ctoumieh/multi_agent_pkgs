@@ -33,7 +33,7 @@ set(DEPENDENCIES
 include_directories(include/mapping_util ${VOXEL_GRID_UTIL_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${PATH_FINDING_UTIL_INCLUDE_DIRS})
 
 add_library(map_builder src/map_builder.cpp)
-target_link_libraries(map_builder PUBLIC ${PATH_FINDING_UTIL_LIBRARIES} ${VOXEL_GRID_UTIL_LIBRARIES} OpenMP::OpenMP_CXX)
+target_link_libraries(map_builder ${PATH_FINDING_UTIL_LIBRARIES} ${VOXEL_GRID_UTIL_LIBRARIES} OpenMP::OpenMP_CXX)
 ament_target_dependencies(map_builder ${DEPENDENCIES})
 
 add_executable(map_builder_node src/map_builder_node.cpp)
