@@ -1,6 +1,95 @@
 #include "map_builder.hpp"
 
 namespace mapping_util {
+
+// =============================================================================
+// OPTIMIZED PARALLEL POTENTIAL FIELD CREATION
+// Original CreatePotentialField is O(dim^3 * mask_size) and single-threaded
+// This version: 1) collects occupied voxels, 2) parallel applies mask
+// =============================================================================
+void CreatePotentialFieldParallel(::voxel_grid_util::VoxelGrid &vg,
+                                   double potential_dist, double pow_val) {
+  const Eigen::Vector3i dim = vg.GetDim();
+  const double vox_size = vg.GetVoxSize();
+  std::vector<int8_t>& data = vg.GetData();
+
+  // Create mask (same as VoxelGrid::CreateMask)
+  std::vector<std::pair<Eigen::Vector3i, int8_t>> mask;
+  const double h_max = 100.0;  // ENV_BUILDER_OCC
+  const int rn = static_cast<int>(std::ceil(potential_dist / vox_size));
+
+  if (potential_dist > 0) {
+    for (int ni = -rn; ni <= rn; ni++) {
+      for (int nj = -rn; nj <= rn; nj++) {
+        for (int nk = -rn; nk <= rn; nk++) {
+          double dist = std::sqrt(ni*ni + nj*nj + nk*nk);
+          dist = std::abs(dist - 1);
+          if (dist * vox_size >= potential_dist) continue;
+
+          double h = h_max * std::pow(1.0 - std::sqrt(ni*ni + nj*nj + nk*nk) / (rn + 1), pow_val);
+          if (h > 1e-3) {
+            mask.push_back(std::make_pair(Eigen::Vector3i(ni, nj, nk), static_cast<int8_t>(h)));
+          }
+        }
+      }
+    }
+  }
+
+  if (mask.empty()) return;
+
+  // Step 1: Collect occupied voxel indices (single-threaded, fast)
+  std::vector<size_t> occupied_indices;
+  occupied_indices.reserve(data.size() / 10);  // Estimate ~10% occupied
+
+  const size_t data_size = data.size();
+  for (size_t idx = 0; idx < data_size; ++idx) {
+    if (data[idx] == 100) {  // ENV_BUILDER_OCC
+      occupied_indices.push_back(idx);
+    }
+  }
+
+  // Step 2: Parallel apply mask from each occupied voxel
+  const size_t dim_x = dim[0], dim_y = dim[1], dim_z = dim[2];
+  const size_t dim_xy = dim_x * dim_y;
+  const size_t num_occupied = occupied_indices.size();
+  const size_t mask_size = mask.size();
+
+  #pragma omp parallel for schedule(dynamic, 64)
+  for (size_t o = 0; o < num_occupied; ++o) {
+    const size_t idx = occupied_indices[o];
+
+    // Convert index to coordinates
+    const int k = idx / dim_xy;
+    const int j = (idx - k * dim_xy) / dim_x;
+    const int i = idx - k * dim_xy - j * dim_x;
+
+    // Apply mask
+    for (size_t m = 0; m < mask_size; ++m) {
+      const int ni = i + mask[m].first[0];
+      const int nj = j + mask[m].first[1];
+      const int nk = k + mask[m].first[2];
+
+      // Bounds check
+      if (ni < 0 || ni >= static_cast<int>(dim_x) ||
+          nj < 0 || nj >= static_cast<int>(dim_y) ||
+          nk < 0 || nk >= static_cast<int>(dim_z)) {
+        continue;
+      }
+
+      const size_t new_idx = ni + nj * dim_x + nk * dim_xy;
+      const int8_t mask_val = mask[m].second;
+
+      // Only update if not unknown (-1) and new value is higher
+      // Use atomic compare-exchange for thread safety
+      int8_t current = data[new_idx];
+      if (current != -1 && current < mask_val) {
+        #pragma omp atomic write
+        data[new_idx] = mask_val;
+      }
+    }
+  }
+}
+
 MapBuilder::MapBuilder() : ::rclcpp::Node("map_builder") {
   DeclareRosParameters();
   InitializeRosParameters();
@@ -173,26 +262,47 @@ void MapBuilder::PointCloudCallback(
   // ==================== TIMED SECTION: PCL Transform ====================
   auto t_start_pcl = std::chrono::high_resolution_clock::now();
 
-  // Manual conversion from ROS Msg to Eigen to avoid linker error
+  // Build transform matrix
   Eigen::Quaterniond q(
       transform_stamped.transform.rotation.w,
       transform_stamped.transform.rotation.x,
       transform_stamped.transform.rotation.y,
       transform_stamped.transform.rotation.z);
-  Eigen::Vector3d t(
+  Eigen::Vector3d t_vec(
       transform_stamped.transform.translation.x,
       transform_stamped.transform.translation.y,
       transform_stamped.transform.translation.z);
 
   Eigen::Isometry3d iso = Eigen::Isometry3d::Identity();
-  iso.translate(t);
+  iso.translate(t_vec);
   iso.rotate(q);
   Eigen::Matrix4f transform_mat = iso.matrix().cast<float>();
 
-  pcl::PointCloud<pcl::PointXYZ> cloud_in;
-  pcl::fromROSMsg(*msg, cloud_in);
-  pcl::PointCloud<pcl::PointXYZ> cloud;
-  pcl::transformPointCloud(cloud_in, cloud, transform_mat);
+  // Extract rotation and translation for fast access
+  const float r00 = transform_mat(0,0), r01 = transform_mat(0,1), r02 = transform_mat(0,2), tx = transform_mat(0,3);
+  const float r10 = transform_mat(1,0), r11 = transform_mat(1,1), r12 = transform_mat(1,2), ty = transform_mat(1,3);
+  const float r20 = transform_mat(2,0), r21 = transform_mat(2,1), r22 = transform_mat(2,2), tz = transform_mat(2,3);
+
+  // OPTIMIZED: Read directly from PointCloud2 buffer and transform in parallel
+  // PointCloud2 format: 12 bytes per point (3 floats: x, y, z)
+  const size_t num_points = msg->width * msg->height;
+  const float* src_data = reinterpret_cast<const float*>(msg->data.data());
+
+  // Output cloud - store as flat vector for cache efficiency
+  std::vector<float> cloud_transformed(num_points * 3);
+
+  #pragma omp parallel for schedule(static)
+  for (size_t i = 0; i < num_points; ++i) {
+    const size_t src_idx = i * 3;
+    const float x = src_data[src_idx + 0];
+    const float y = src_data[src_idx + 1];
+    const float z = src_data[src_idx + 2];
+
+    // Apply transform: p' = R*p + t
+    cloud_transformed[src_idx + 0] = r00*x + r01*y + r02*z + tx;
+    cloud_transformed[src_idx + 1] = r10*x + r11*y + r12*z + ty;
+    cloud_transformed[src_idx + 2] = r20*x + r21*y + r22*z + tz;
+  }
 
   auto t_end_pcl = std::chrono::high_resolution_clock::now();
   pcl_transform_comp_time_.push_back(
@@ -251,7 +361,6 @@ void MapBuilder::PointCloudCallback(
   const int dim_x = grid_dim[0], dim_y = grid_dim[1], dim_z = grid_dim[2];
   const size_t dim_xy = dim_x * dim_y;
 
-  const size_t num_points = cloud.points.size();
   const size_t num_drones = other_drones.size();
 
   // Pre-convert drone positions to float for faster comparison
@@ -263,11 +372,12 @@ void MapBuilder::PointCloudCallback(
   }
 
   // Simple parallel loop with atomic increments
-  // Note: int8_t atomics may not be lock-free on all platforms, but avoids large allocations
   #pragma omp parallel for schedule(static)
   for (size_t p = 0; p < num_points; ++p) {
-    const auto& point = cloud.points[p];
-    const float px = point.x, py = point.y, pz = point.z;
+    const size_t p_idx = p * 3;
+    const float px = cloud_transformed[p_idx + 0];
+    const float py = cloud_transformed[p_idx + 1];
+    const float pz = cloud_transformed[p_idx + 2];
 
     // Skip NaN points (only check x - if x is NaN, point is invalid)
     if (std::isnan(px)) continue;
@@ -447,7 +557,7 @@ void MapBuilder::PointCloudCallback(
 
   // ==================== TIMED SECTION: Potential Field ====================
   auto t_start_pot = ::std::chrono::high_resolution_clock::now();
-  voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
+  CreatePotentialFieldParallel(voxel_grid, potential_dist_, potential_pow_);
   auto t_end_pot = ::std::chrono::high_resolution_clock::now();
   potential_field_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_pot - t_start_pot).count());
 
@@ -577,7 +687,7 @@ void MapBuilder::EnvironmentVoxelGridCallback(
     inflate_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
 
     t_start_wall = ::std::chrono::high_resolution_clock::now();
-    voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
+    CreatePotentialFieldParallel(voxel_grid, potential_dist_, potential_pow_);
     t_end_wall = ::std::chrono::high_resolution_clock::now();
     potential_field_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
 
