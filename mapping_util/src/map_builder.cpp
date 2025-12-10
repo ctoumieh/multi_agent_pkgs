@@ -6,6 +6,7 @@ namespace mapping_util {
 // OPTIMIZED PARALLEL POTENTIAL FIELD CREATION
 // Original CreatePotentialField is O(dim^3 * mask_size) and single-threaded
 // This version: 1) collects occupied voxels, 2) parallel applies mask
+// Uses atomic CAS loop to safely compute max without race conditions
 // =============================================================================
 void CreatePotentialFieldParallel(::voxel_grid_util::VoxelGrid &vg,
                                    double potential_dist, double pow_val) {
@@ -79,12 +80,18 @@ void CreatePotentialFieldParallel(::voxel_grid_util::VoxelGrid &vg,
       const size_t new_idx = ni + nj * dim_x + nk * dim_xy;
       const int8_t mask_val = mask[m].second;
 
-      // Only update if not unknown (-1) and new value is higher
-      // Use atomic compare-exchange for thread safety
+      // Atomic CAS loop to safely compute max
+      // This ensures we never overwrite a higher value with a lower one
       int8_t current = data[new_idx];
-      if (current != -1 && current < mask_val) {
-        #pragma omp atomic write
-        data[new_idx] = mask_val;
+      while (current != -1 && current < mask_val) {
+        // Try to replace 'current' with 'mask_val'
+        // If data[new_idx] == current, set it to mask_val and return true
+        // Otherwise, load the new value into 'current' and return false
+        if (__atomic_compare_exchange_n(&data[new_idx], &current, mask_val,
+                                        false, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+          break;  // Successfully wrote mask_val
+        }
+        // 'current' now contains the updated value, loop re-checks condition
       }
     }
   }
@@ -559,7 +566,7 @@ void MapBuilder::PointCloudCallback(
 
   // ==================== TIMED SECTION: Potential Field ====================
   auto t_start_pot = ::std::chrono::high_resolution_clock::now();
-  voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
+  CreatePotentialFieldParallel(voxel_grid, potential_dist_, potential_pow_);
   auto t_end_pot = ::std::chrono::high_resolution_clock::now();
   potential_field_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_pot - t_start_pot).count());
 
@@ -689,7 +696,7 @@ void MapBuilder::EnvironmentVoxelGridCallback(
     inflate_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
 
     t_start_wall = ::std::chrono::high_resolution_clock::now();
-    voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
+    CreatePotentialFieldParallel(voxel_grid, potential_dist_, potential_pow_);
     t_end_wall = ::std::chrono::high_resolution_clock::now();
     potential_field_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
 
