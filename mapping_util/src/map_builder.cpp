@@ -284,24 +284,26 @@ void MapBuilder::PointCloudCallback(
   const float r20 = transform_mat(2,0), r21 = transform_mat(2,1), r22 = transform_mat(2,2), tz = transform_mat(2,3);
 
   // OPTIMIZED: Read directly from PointCloud2 buffer and transform in parallel
-  // PointCloud2 format: 12 bytes per point (3 floats: x, y, z)
   const size_t num_points = msg->width * msg->height;
-  const float* src_data = reinterpret_cast<const float*>(msg->data.data());
+  const uint32_t point_step = msg->point_step;  // Bytes per point
+  const uint8_t* src_bytes = msg->data.data();
 
   // Output cloud - store as flat vector for cache efficiency
   std::vector<float> cloud_transformed(num_points * 3);
 
   #pragma omp parallel for schedule(static)
   for (size_t i = 0; i < num_points; ++i) {
-    const size_t src_idx = i * 3;
-    const float x = src_data[src_idx + 0];
-    const float y = src_data[src_idx + 1];
-    const float z = src_data[src_idx + 2];
+    // Use point_step to correctly offset into the buffer
+    const float* pt = reinterpret_cast<const float*>(src_bytes + i * point_step);
+    const float x = pt[0];
+    const float y = pt[1];
+    const float z = pt[2];
 
+    const size_t out_idx = i * 3;
     // Apply transform: p' = R*p + t
-    cloud_transformed[src_idx + 0] = r00*x + r01*y + r02*z + tx;
-    cloud_transformed[src_idx + 1] = r10*x + r11*y + r12*z + ty;
-    cloud_transformed[src_idx + 2] = r20*x + r21*y + r22*z + tz;
+    cloud_transformed[out_idx + 0] = r00*x + r01*y + r02*z + tx;
+    cloud_transformed[out_idx + 1] = r10*x + r11*y + r12*z + ty;
+    cloud_transformed[out_idx + 2] = r20*x + r21*y + r22*z + tz;
   }
 
   auto t_end_pcl = std::chrono::high_resolution_clock::now();
@@ -557,7 +559,7 @@ void MapBuilder::PointCloudCallback(
 
   // ==================== TIMED SECTION: Potential Field ====================
   auto t_start_pot = ::std::chrono::high_resolution_clock::now();
-  CreatePotentialFieldParallel(voxel_grid, potential_dist_, potential_pow_);
+  voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
   auto t_end_pot = ::std::chrono::high_resolution_clock::now();
   potential_field_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_pot - t_start_pot).count());
 
@@ -687,7 +689,7 @@ void MapBuilder::EnvironmentVoxelGridCallback(
     inflate_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
 
     t_start_wall = ::std::chrono::high_resolution_clock::now();
-    CreatePotentialFieldParallel(voxel_grid, potential_dist_, potential_pow_);
+    voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
     t_end_wall = ::std::chrono::high_resolution_clock::now();
     potential_field_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_wall - t_start_wall).count());
 
