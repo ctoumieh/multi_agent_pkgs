@@ -245,7 +245,7 @@ void MapBuilder::PointCloudCallback(
   const double z_min = grid_origin[2], z_max = grid_origin[2] + grid_dim[2] * vox_size;
 
   const size_t num_points = cloud.points.size();
-  const size_t dim_yz = grid_dim[1] * grid_dim[2];
+  const size_t dim_xy = grid_dim[0] * grid_dim[1];  // For z indexing
 
   // Parallel point counting with thread-local accumulators to avoid atomic ops
   const int num_threads = omp_get_max_threads();
@@ -283,8 +283,9 @@ void MapBuilder::PointCloudCallback(
         continue;
       }
 
-      // Direct index calculation
-      const size_t idx = i * dim_yz + j * grid_dim[2] + k;
+      // Direct index calculation - MUST MATCH VoxelGrid::CoordToIdx
+      // Original: idx = x + y * dim_x + z * dim_x * dim_y
+      const size_t idx = i + j * grid_dim[0] + k * dim_xy;
       my_accum[idx]++;
 
       // Check if point belongs to another drone
