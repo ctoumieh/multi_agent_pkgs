@@ -218,105 +218,105 @@ void MapBuilder::PointCloudCallback(
   // ==================== TIMED SECTION: Point Counting ====================
   auto t_start_count = std::chrono::high_resolution_clock::now();
 
-  // 5. Swarm Filtering & Counting (OPTIMIZED)
+  // 5. Swarm Filtering & Counting (OPTIMIZED with atomics)
   std::vector<Eigen::Vector3d> other_drones;
   for (const auto& frame : swarm_frames_) {
       try {
           geometry_msgs::msg::TransformStamped t;
-          t = tf_buffer_->lookupTransform(world_frame_, frame, msg->header.stamp, rclcpp::Duration::from_seconds(0.1));
+          // Use short timeout (5ms) to avoid blocking if TF not available
+          t = tf_buffer_->lookupTransform(world_frame_, frame, msg->header.stamp, rclcpp::Duration::from_seconds(0.005));
           other_drones.emplace_back(t.transform.translation.x, t.transform.translation.y, t.transform.translation.z);
       } catch (...) {}
   }
-  const double r_sq = filter_radius_ * filter_radius_;
+  const float r_sq = static_cast<float>(filter_radius_ * filter_radius_);
 
-  // Pre-compute grid parameters to avoid repeated virtual calls
+  // Pre-compute grid parameters
   Eigen::Vector3d grid_origin = vg_accum.GetOrigin();
   Eigen::Vector3i grid_dim = vg_accum.GetDim();
-  const double vox_size = vg_accum.GetVoxSize();
-  const double inv_vox_size = 1.0 / vox_size;
+  const float vox_size = static_cast<float>(vg_accum.GetVoxSize());
+  const float inv_vox_size = 1.0f / vox_size;
 
-  // Get raw data pointers for direct access (avoid function call overhead)
+  // Get raw data pointers
   std::vector<int8_t>& accum_data = vg_accum.GetData();
   std::vector<int8_t>& drone_data = vg_drone.GetData();
 
-  // Pre-compute bounds for early rejection
-  const double x_min = grid_origin[0], x_max = grid_origin[0] + grid_dim[0] * vox_size;
-  const double y_min = grid_origin[1], y_max = grid_origin[1] + grid_dim[1] * vox_size;
-  const double z_min = grid_origin[2], z_max = grid_origin[2] + grid_dim[2] * vox_size;
+  // Pre-compute bounds
+  const float ox = static_cast<float>(grid_origin[0]);
+  const float oy = static_cast<float>(grid_origin[1]);
+  const float oz = static_cast<float>(grid_origin[2]);
+  const float x_min = ox, x_max = ox + grid_dim[0] * vox_size;
+  const float y_min = oy, y_max = oy + grid_dim[1] * vox_size;
+  const float z_min = oz, z_max = oz + grid_dim[2] * vox_size;
+
+  const int dim_x = grid_dim[0], dim_y = grid_dim[1], dim_z = grid_dim[2];
+  const size_t dim_xy = dim_x * dim_y;
 
   const size_t num_points = cloud.points.size();
-  const size_t dim_xy = grid_dim[0] * grid_dim[1];  // For z indexing
+  const size_t num_drones = other_drones.size();
 
-  // Parallel point counting with thread-local accumulators to avoid atomic ops
-  const int num_threads = omp_get_max_threads();
-  std::vector<std::vector<int16_t>> local_accum(num_threads, std::vector<int16_t>(accum_data.size(), 0));
-  std::vector<std::vector<int16_t>> local_drone(num_threads, std::vector<int16_t>(drone_data.size(), 0));
-
-  #pragma omp parallel
-  {
-    const int tid = omp_get_thread_num();
-    auto& my_accum = local_accum[tid];
-    auto& my_drone = local_drone[tid];
-
-    #pragma omp for schedule(static)
-    for (size_t p = 0; p < num_points; ++p) {
-      const auto& point = cloud.points[p];
-      const float px = point.x, py = point.y, pz = point.z;
-
-      // Skip NaN points
-      if (std::isnan(px)) continue;
-
-      // Early bounds check (skip points outside grid)
-      if (px < x_min || px >= x_max ||
-          py < y_min || py >= y_max ||
-          pz < z_min || pz >= z_max) {
-        continue;
-      }
-
-      // Direct integer coordinate calculation (no Eigen overhead)
-      const int i = static_cast<int>((px - grid_origin[0]) * inv_vox_size);
-      const int j = static_cast<int>((py - grid_origin[1]) * inv_vox_size);
-      const int k = static_cast<int>((pz - grid_origin[2]) * inv_vox_size);
-
-      // Bounds check (should rarely fail after early check, but be safe)
-      if (i < 0 || i >= grid_dim[0] || j < 0 || j >= grid_dim[1] || k < 0 || k >= grid_dim[2]) {
-        continue;
-      }
-
-      // Direct index calculation - MUST MATCH VoxelGrid::CoordToIdx
-      // Original: idx = x + y * dim_x + z * dim_x * dim_y
-      const size_t idx = i + j * grid_dim[0] + k * dim_xy;
-      my_accum[idx]++;
-
-      // Check if point belongs to another drone
-      bool is_drone = false;
-      for (const auto& d_pos : other_drones) {
-        const float dx = px - d_pos[0];
-        const float dy = py - d_pos[1];
-        const float dz = pz - d_pos[2];
-        if (dx*dx + dy*dy + dz*dz < r_sq) {
-          is_drone = true;
-          break;
-        }
-      }
-
-      if (is_drone) {
-        my_drone[idx]++;
-      }
-    }
+  // Pre-convert drone positions to float for faster comparison
+  std::vector<float> drone_x(num_drones), drone_y(num_drones), drone_z(num_drones);
+  for (size_t d = 0; d < num_drones; ++d) {
+    drone_x[d] = static_cast<float>(other_drones[d][0]);
+    drone_y[d] = static_cast<float>(other_drones[d][1]);
+    drone_z[d] = static_cast<float>(other_drones[d][2]);
   }
 
-  // Merge thread-local results (parallel reduction)
+  // Simple parallel loop with atomic increments
+  // Note: int8_t atomics may not be lock-free on all platforms, but avoids large allocations
   #pragma omp parallel for schedule(static)
-  for (size_t idx = 0; idx < accum_data.size(); ++idx) {
-    int16_t sum_accum = 0, sum_drone = 0;
-    for (int t = 0; t < num_threads; ++t) {
-      sum_accum += local_accum[t][idx];
-      sum_drone += local_drone[t][idx];
+  for (size_t p = 0; p < num_points; ++p) {
+    const auto& point = cloud.points[p];
+    const float px = point.x, py = point.y, pz = point.z;
+
+    // Skip NaN points (only check x - if x is NaN, point is invalid)
+    if (std::isnan(px)) continue;
+
+    // Early bounds check
+    if (px < x_min || px >= x_max ||
+        py < y_min || py >= y_max ||
+        pz < z_min || pz >= z_max) {
+      continue;
     }
-    // Clamp to int8_t range
-    accum_data[idx] = static_cast<int8_t>(std::min<int16_t>(sum_accum, 127));
-    drone_data[idx] = static_cast<int8_t>(std::min<int16_t>(sum_drone, 127));
+
+    // Compute voxel indices
+    const int i = static_cast<int>((px - ox) * inv_vox_size);
+    const int j = static_cast<int>((py - oy) * inv_vox_size);
+    const int k = static_cast<int>((pz - oz) * inv_vox_size);
+
+    // Bounds check
+    if (i < 0 || i >= dim_x || j < 0 || j >= dim_y || k < 0 || k >= dim_z) {
+      continue;
+    }
+
+    const size_t idx = i + j * dim_x + k * dim_xy;
+
+    // Atomic increment (saturating at 127)
+    int8_t old_val = accum_data[idx];
+    if (old_val < 127) {
+      #pragma omp atomic
+      accum_data[idx]++;
+    }
+
+    // Check if point belongs to another drone
+    bool is_drone = false;
+    for (size_t d = 0; d < num_drones; ++d) {
+      const float dx = px - drone_x[d];
+      const float dy = py - drone_y[d];
+      const float dz = pz - drone_z[d];
+      if (dx*dx + dy*dy + dz*dz < r_sq) {
+        is_drone = true;
+        break;
+      }
+    }
+
+    if (is_drone) {
+      int8_t old_drone_val = drone_data[idx];
+      if (old_drone_val < 127) {
+        #pragma omp atomic
+        drone_data[idx]++;
+      }
+    }
   }
 
   auto t_end_count = std::chrono::high_resolution_clock::now();
