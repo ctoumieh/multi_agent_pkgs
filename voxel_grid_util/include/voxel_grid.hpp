@@ -207,7 +207,7 @@ public:
   unsigned int GetDataSize() const;
 
   // get data
-  std::vector<voxel_data_type> GetData() const;
+  std::vector<voxel_data_type>& GetData();
 
 private:
   // origin of the grid

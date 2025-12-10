@@ -218,7 +218,7 @@ void MapBuilder::PointCloudCallback(
   // ==================== TIMED SECTION: Point Counting ====================
   auto t_start_count = std::chrono::high_resolution_clock::now();
 
-  // 5. Swarm Filtering & Counting
+  // 5. Swarm Filtering & Counting (OPTIMIZED)
   std::vector<Eigen::Vector3d> other_drones;
   for (const auto& frame : swarm_frames_) {
       try {
@@ -227,23 +227,92 @@ void MapBuilder::PointCloudCallback(
           other_drones.emplace_back(t.transform.translation.x, t.transform.translation.y, t.transform.translation.z);
       } catch (...) {}
   }
-  double r_sq = filter_radius_ * filter_radius_;
+  const double r_sq = filter_radius_ * filter_radius_;
 
-  for (const auto &point : cloud.points) {
-    Eigen::Vector3d p_vec(point.x, point.y, point.z);
+  // Pre-compute grid parameters to avoid repeated virtual calls
+  const Eigen::Vector3d origin = vg_accum.GetOrigin();
+  const Eigen::Vector3i dim = vg_accum.GetDim();
+  const double vox_size = vg_accum.GetVoxSize();
+  const double inv_vox_size = 1.0 / vox_size;
 
-    vg_accum.SetVoxelGlobal(p_vec, vg_accum.GetVoxelGlobal(p_vec) + 1);
+  // Get raw data pointers for direct access (avoid function call overhead)
+  std::vector<int8_t>& accum_data = vg_accum.GetData();
+  std::vector<int8_t>& drone_data = vg_drone.GetData();
 
-    bool is_drone = false;
-    for(const auto& d_pos : other_drones) {
-        if((p_vec - d_pos).squaredNorm() < r_sq) {
-            is_drone = true; break;
+  // Pre-compute bounds for early rejection
+  const double x_min = origin[0], x_max = origin[0] + dim[0] * vox_size;
+  const double y_min = origin[1], y_max = origin[1] + dim[1] * vox_size;
+  const double z_min = origin[2], z_max = origin[2] + dim[2] * vox_size;
+
+  const size_t num_points = cloud.points.size();
+  const size_t dim_yz = dim[1] * dim[2];
+
+  // Parallel point counting with thread-local accumulators to avoid atomic ops
+  const int num_threads = omp_get_max_threads();
+  std::vector<std::vector<int16_t>> local_accum(num_threads, std::vector<int16_t>(accum_data.size(), 0));
+  std::vector<std::vector<int16_t>> local_drone(num_threads, std::vector<int16_t>(drone_data.size(), 0));
+
+  #pragma omp parallel
+  {
+    const int tid = omp_get_thread_num();
+    auto& my_accum = local_accum[tid];
+    auto& my_drone = local_drone[tid];
+
+    #pragma omp for schedule(static)
+    for (size_t p = 0; p < num_points; ++p) {
+      const auto& point = cloud.points[p];
+      const float px = point.x, py = point.y, pz = point.z;
+
+      // Early bounds check (skip points outside grid)
+      if (px < x_min || px >= x_max ||
+          py < y_min || py >= y_max ||
+          pz < z_min || pz >= z_max) {
+        continue;
+      }
+
+      // Direct integer coordinate calculation (no Eigen overhead)
+      const int i = static_cast<int>((px - origin[0]) * inv_vox_size);
+      const int j = static_cast<int>((py - origin[1]) * inv_vox_size);
+      const int k = static_cast<int>((pz - origin[2]) * inv_vox_size);
+
+      // Bounds check (should rarely fail after early check, but be safe)
+      if (i < 0 || i >= dim[0] || j < 0 || j >= dim[1] || k < 0 || k >= dim[2]) {
+        continue;
+      }
+
+      // Direct index calculation
+      const size_t idx = i * dim_yz + j * dim[2] + k;
+      my_accum[idx]++;
+
+      // Check if point belongs to another drone
+      bool is_drone = false;
+      for (const auto& d_pos : other_drones) {
+        const float dx = px - d_pos[0];
+        const float dy = py - d_pos[1];
+        const float dz = pz - d_pos[2];
+        if (dx*dx + dy*dy + dz*dz < r_sq) {
+          is_drone = true;
+          break;
         }
-    }
+      }
 
-    if(is_drone) {
-        vg_drone.SetVoxelGlobal(p_vec, vg_drone.GetVoxelGlobal(p_vec) + 1);
+      if (is_drone) {
+        my_drone[idx]++;
+      }
     }
+  }
+
+  // Merge thread-local results (parallel reduction)
+  #pragma omp parallel for schedule(static)
+  for (size_t idx = 0; idx < accum_data.size(); ++idx) {
+    int16_t sum_accum = 0, sum_drone = 0;
+    for (int t = 0; t < num_threads; ++t) {
+      sum_accum += local_accum[t][idx];
+      sum_drone += local_drone[t][idx];
+    }
+    // Clamp to int8_t range
+    accum_data[idx] = static_cast<int8_t>(std::min<int16_t>(sum_accum, 127));
+    drone_data[idx] = static_cast<int8_t>(std::min<int16_t>(sum_drone, 127));
   }
 
   auto t_end_count = std::chrono::high_resolution_clock::now();

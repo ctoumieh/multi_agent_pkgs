@@ -25,6 +25,7 @@
 #include <pcl/common/transforms.h>
 #include <numeric>
 #include <cmath>
+#include <omp.h>
 
 // Include the service for real vision
 #include "depth_estimation_ros2/srv/get_camera_info.hpp"

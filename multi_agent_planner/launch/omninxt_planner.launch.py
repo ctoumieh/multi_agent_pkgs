@@ -49,7 +49,7 @@ def launch_nodes(context, *args, **kwargs):
     )
 
     # Optional flags
-    voxel_grid_range = [20.0, 20.0, 12.0]
+    voxel_grid_range = [10.0, 10.0, 6.0]
     potential_dist = 1.2
     potential_dist_max = 1.2
     potential_speed_max = 2.0
