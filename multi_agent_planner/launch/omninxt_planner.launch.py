@@ -51,7 +51,7 @@ def launch_nodes(context, *args, **kwargs):
     # Optional flags
     voxel_grid_range = [10.0, 10.0, 6.0]
     voxel_size = 0.3
-    min_points_per_voxel = 3
+    min_points_per_voxel = 5
     inflation_dist = 0.3
     potential_dist = 0.3
     potential_dist_max = 1.2
@@ -75,6 +75,7 @@ def launch_nodes(context, *args, **kwargs):
                 {'voxel_grid_range': voxel_grid_range},
                 {'voxel_size': voxel_size},
                 {'inflation_dist': inflation_dist},
+                {'min_points_per_voxel': min_points_per_voxel},
                 {'potential_dist': potential_dist},
                 {'potential_dist_max': potential_dist_max},
                 {'potential_speed_max': potential_speed_max},
