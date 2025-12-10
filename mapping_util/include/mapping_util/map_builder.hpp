@@ -12,7 +12,7 @@
 #include <env_builder_msgs/msg/voxel_grid_stamped.hpp>
 #include <env_builder_msgs/srv/get_voxel_grid.hpp>
 #include <iostream>
-#include <fstream> 
+#include <fstream>
 #include <mutex>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -133,6 +133,16 @@ private:
   std::vector<depth_estimation_ros2::msg::CameraInfo> cameras_;
   std::vector<Eigen::Isometry3d> cameras_in_local_grid_;
 
+  // --- TIMING VECTORS ---
+  // Vision pipeline timing (detailed)
+  ::std::vector<double> pcl_transform_comp_time_;      // PCL fromROSMsg + transformPointCloud
+  ::std::vector<double> point_counting_comp_time_;     // Swarm filtering & point counting loop
+  ::std::vector<double> obstacle_map_comp_time_;       // Obstacle map creation loop
+  ::std::vector<double> camera_update_comp_time_;      // Camera pose updates
+  ::std::vector<double> threshold_comp_time_;          // Thresholding loop
+  ::std::vector<double> shift_comp_time_;              // Grid shift logic
+
+  // Existing timing vectors
   ::std::vector<double> raycast_comp_time_;
   ::std::vector<double> merge_comp_time_;
   ::std::vector<double> uncertain_comp_time_;

@@ -132,7 +132,7 @@ void MapBuilder::InitializeRosParameters() {
 }
 
 // -------------------------------------------------------------------------
-// VISION CALLBACK
+// VISION CALLBACK (with comprehensive timing instrumentation)
 // -------------------------------------------------------------------------
 void MapBuilder::PointCloudCallback(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
@@ -154,7 +154,7 @@ void MapBuilder::PointCloudCallback(
   pos_curr[1] = transform_stamped.transform.translation.y;
   pos_curr[2] = transform_stamped.transform.translation.z;
 
-  // 2. Initialize Grid
+  // 2. Initialize Grid (only on first call)
   if (voxel_grid_curr_.GetData().size() == 0) {
     ::Eigen::Vector3d origin;
     origin[0] = (pos_curr[0] - voxel_grid_range_[0] / 2);
@@ -170,7 +170,9 @@ void MapBuilder::PointCloudCallback(
     ClearVoxelsCenter();
   }
 
-  // 3. Process Cloud
+  // ==================== TIMED SECTION: PCL Transform ====================
+  auto t_start_pcl = std::chrono::high_resolution_clock::now();
+
   // Manual conversion from ROS Msg to Eigen to avoid linker error
   Eigen::Quaterniond q(
       transform_stamped.transform.rotation.w,
@@ -192,6 +194,10 @@ void MapBuilder::PointCloudCallback(
   pcl::PointCloud<pcl::PointXYZ> cloud;
   pcl::transformPointCloud(cloud_in, cloud, transform_mat);
 
+  auto t_end_pcl = std::chrono::high_resolution_clock::now();
+  pcl_transform_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_pcl - t_start_pcl).count());
+
   // 4. Initialize Temp Grids
   Eigen::Vector3d origin_curr = voxel_grid_curr_.GetOrigin();
   Eigen::Vector3i dim_curr = voxel_grid_curr_.GetDim();
@@ -208,6 +214,9 @@ void MapBuilder::PointCloudCallback(
   Eigen::Vector3d origin_drn = origin_curr;
   Eigen::Vector3i dim_drn = dim_curr;
   ::voxel_grid_util::VoxelGrid vg_drone(origin_drn, dim_drn, vox_size_curr, true);
+
+  // ==================== TIMED SECTION: Point Counting ====================
+  auto t_start_count = std::chrono::high_resolution_clock::now();
 
   // 5. Swarm Filtering & Counting
   std::vector<Eigen::Vector3d> other_drones;
@@ -237,6 +246,13 @@ void MapBuilder::PointCloudCallback(
     }
   }
 
+  auto t_end_count = std::chrono::high_resolution_clock::now();
+  point_counting_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_count - t_start_count).count());
+
+  // ==================== TIMED SECTION: Obstacle Map Creation ====================
+  auto t_start_obs = std::chrono::high_resolution_clock::now();
+
   // 6. Create Obstacle Map
   Eigen::Vector3i dim = vg_accum.GetDim();
   for (int i = 0; i < dim[0]; i++) {
@@ -251,6 +267,13 @@ void MapBuilder::PointCloudCallback(
       }
     }
   }
+
+  auto t_end_obs = std::chrono::high_resolution_clock::now();
+  obstacle_map_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_obs - t_start_obs).count());
+
+  // ==================== TIMED SECTION: Camera Pose Updates ====================
+  auto t_start_cam = std::chrono::high_resolution_clock::now();
 
   // 7. Update Camera Poses
   // Manual conversion
@@ -295,7 +318,11 @@ void MapBuilder::PointCloudCallback(
     cameras_in_local_grid_.push_back(cam_pose_final);
   }
 
-  // 8. Raycast
+  auto t_end_cam = std::chrono::high_resolution_clock::now();
+  camera_update_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_cam - t_start_cam).count());
+
+  // ==================== TIMED SECTION: Raycast ====================
   ::Eigen::Vector3d pos_curr_local = voxel_grid_curr_.GetCoordLocal(pos_curr);
   auto t_start_ray = ::std::chrono::high_resolution_clock::now();
 
@@ -304,7 +331,10 @@ void MapBuilder::PointCloudCallback(
   auto t_end_ray = ::std::chrono::high_resolution_clock::now();
   raycast_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_ray - t_start_ray).count());
 
-  // 9. Thresholding & Publish
+  // ==================== TIMED SECTION: Thresholding ====================
+  auto t_start_thresh = std::chrono::high_resolution_clock::now();
+
+  // 9. Thresholding & Create output grid
   Eigen::Vector3d origin_final = voxel_grid_curr_.GetOrigin();
   Eigen::Vector3i dim_final = voxel_grid_curr_.GetDim();
   double vs_final = voxel_grid_curr_.GetVoxSize();
@@ -326,19 +356,23 @@ void MapBuilder::PointCloudCallback(
     }
   }
 
-  // SetUncertainToUnknown
+  auto t_end_thresh = std::chrono::high_resolution_clock::now();
+  threshold_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_thresh - t_start_thresh).count());
+
+  // ==================== TIMED SECTION: SetUncertainToUnknown ====================
   auto t_start_unk = ::std::chrono::high_resolution_clock::now();
   SetUncertainToUnknown(voxel_grid);
   auto t_end_unk = ::std::chrono::high_resolution_clock::now();
   uncertain_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_unk - t_start_unk).count());
 
-  // Inflate
+  // ==================== TIMED SECTION: Inflate ====================
   auto t_start_inf = ::std::chrono::high_resolution_clock::now();
   voxel_grid.InflateObstacles(inflation_dist_);
   auto t_end_inf = ::std::chrono::high_resolution_clock::now();
   inflate_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_inf - t_start_inf).count());
 
-  // Potential Field
+  // ==================== TIMED SECTION: Potential Field ====================
   auto t_start_pot = ::std::chrono::high_resolution_clock::now();
   voxel_grid.CreatePotentialField(potential_dist_, potential_pow_);
   auto t_end_pot = ::std::chrono::high_resolution_clock::now();
@@ -353,9 +387,8 @@ void MapBuilder::PointCloudCallback(
   vg_final_msg_stamped.header.frame_id = world_frame_;
   voxel_grid_pub_->publish(vg_final_msg_stamped);
 
-  // Total Time
-  auto t_end_total = ::std::chrono::high_resolution_clock::now();
-  tot_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_total - t_start_total).count());
+  // ==================== TIMED SECTION: Grid Shift ====================
+  auto t_start_shift = std::chrono::high_resolution_clock::now();
 
   // Shift logic
   Eigen::Vector3d origin_shift = voxel_grid_curr_.GetOrigin();
@@ -382,6 +415,14 @@ void MapBuilder::PointCloudCallback(
     }
     voxel_grid_curr_ = shifted_grid;
   }
+
+  auto t_end_shift = std::chrono::high_resolution_clock::now();
+  shift_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_shift - t_start_shift).count());
+
+  // Total Time
+  auto t_end_total = ::std::chrono::high_resolution_clock::now();
+  tot_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_total - t_start_total).count());
 }
 
 // -------------------------------------------------------------------------
@@ -857,6 +898,26 @@ void MapBuilder::OnShutdown() {
   // Save all metrics using the helper function (saves file AND prints stats)
   std::string filename;
 
+  // --- NEW: Vision pipeline detailed timing ---
+  filename = "comp_time_pcl_transform_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(pcl_transform_comp_time_, filename);
+
+  filename = "comp_time_point_counting_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(point_counting_comp_time_, filename);
+
+  filename = "comp_time_obstacle_map_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(obstacle_map_comp_time_, filename);
+
+  filename = "comp_time_camera_update_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(camera_update_comp_time_, filename);
+
+  filename = "comp_time_threshold_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(threshold_comp_time_, filename);
+
+  filename = "comp_time_shift_" + std::to_string(id_) + ".csv";
+  SaveAndDisplayCompTime(shift_comp_time_, filename);
+
+  // --- Existing timing ---
   filename = "comp_time_raycast_" + std::to_string(id_) + ".csv";
   SaveAndDisplayCompTime(raycast_comp_time_, filename);
 
