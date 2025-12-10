@@ -29,6 +29,7 @@ find_package(path_finding_util REQUIRED)
 find_package(mapping_util REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(swarmnxt_msgs REQUIRED)
+find_package(OpenMP REQUIRED)
 
 set(DEPENDENCIES
   pcl_conversions
@@ -56,7 +57,7 @@ target_link_libraries(agent_class ${CONVEX_DECOMP_UTIL_LIBRARIES} ${JPS3D_LIBRAR
 ament_target_dependencies(agent_class ${DEPENDENCIES})
 
 add_executable(agent_node src/agent_node.cpp)
-target_link_libraries(agent_node agent_class ${CONVEX_DECOMP_UTIL_LIBRARIES})
+target_link_libraries(agent_node agent_class ${CONVEX_DECOMP_UTIL_LIBRARIES} OpenMP::OpenMP_CXX)
 ament_target_dependencies(agent_node ${DEPENDENCIES})
 
 install(DIRECTORY
