@@ -825,8 +825,8 @@ void MapBuilder::ClearLine(::voxel_grid_util::VoxelGrid &vg_curr,
       ::Eigen::Vector3d cam_position = cam_pose.translation();
       ::Eigen::Vector3d dir = end - cam_position;
       ::Eigen::Vector3d dir_zx = dir - dir.dot(y_b) * y_b; dir_zx.normalize();
-      ::Eigen::Vector3d dir_zy = dir - dir.dot(x_b) * z_b; dir_zy.normalize();
-      if (dir_zy.dot(x_b) > cos(cam_info.vfov_radians / 2.0) && dir_zx.dot(x_b) > cos(cam_info.hfov_radians / 2.0)) {
+      ::Eigen::Vector3d dir_zy = dir - dir.dot(x_b) * x_b; dir_zy.normalize();
+      if (dir_zy.dot(z_b) > cos(cam_info.vfov_radians / 2.0) && dir_zx.dot(z_b) > cos(cam_info.hfov_radians / 2.0)) {
         in_fov = true; start_f = cam_position; break;
       }
   }
