@@ -989,10 +989,10 @@ void Agent::PublishPolyhedra() {
     mesh_marker.scale.x = 1.0;
     mesh_marker.scale.y = 1.0;
     mesh_marker.scale.z = 1.0;
-    mesh_marker.color.r = 0.0f;
-    mesh_marker.color.g = 0.67f;  // Match your MeshColor: 0, 170, 255
-    mesh_marker.color.b = 1.0f;
-    mesh_marker.color.a = 0.3f;   // Semi-transparent
+    mesh_marker.color.r = 1.0f;
+    mesh_marker.color.g = 0.0f;  // Match your MeshColor: 0, 170, 255
+    mesh_marker.color.b = 0.0f;
+    mesh_marker.color.a = 0.1f;   // Semi-transparent
 
     // Wireframe marker (LINE_LIST) for edges
     visualization_msgs::msg::Marker edge_marker;
