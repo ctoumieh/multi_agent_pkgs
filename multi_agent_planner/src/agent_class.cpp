@@ -981,7 +981,7 @@ void Agent::PublishPolyhedra() {
     visualization_msgs::msg::Marker mesh_marker;
     mesh_marker.header.frame_id = world_frame_;
     mesh_marker.header.stamp = now();
-    mesh_marker.ns = "polyhedra_mesh";
+    mesh_marker.ns = "polyhedra";
     mesh_marker.id = marker_id++;
     mesh_marker.type = visualization_msgs::msg::Marker::TRIANGLE_LIST;
     mesh_marker.action = visualization_msgs::msg::Marker::ADD;
@@ -998,7 +998,7 @@ void Agent::PublishPolyhedra() {
     visualization_msgs::msg::Marker edge_marker;
     edge_marker.header.frame_id = world_frame_;
     edge_marker.header.stamp = now();
-    edge_marker.ns = "polyhedra_edges";
+    edge_marker.ns = "polyhedra";
     edge_marker.id = marker_id++;
     edge_marker.type = visualization_msgs::msg::Marker::LINE_LIST;
     edge_marker.action = visualization_msgs::msg::Marker::ADD;
