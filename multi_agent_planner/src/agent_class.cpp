@@ -1009,9 +1009,6 @@ void Agent::PublishPolyhedra() {
     edge_marker.color.b = 0.0f;
     edge_marker.color.a = 0.8f;
 
-    // Get faces from polyhedron
-    const auto& hrep = poly.hrep();  // Hyperplane representation
-
     // For each face, triangulate using fan method
     for (const auto& face_vertices : vertices) {
       if (face_vertices.size() < 3) continue;
