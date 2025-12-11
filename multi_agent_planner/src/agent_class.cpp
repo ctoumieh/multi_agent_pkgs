@@ -408,6 +408,8 @@ void Agent::UpdatePath() {
       start = {state_ini_[0], state_ini_[1], state_ini_[2]};
     }
 
+    std::cout << "state curr size: " << state_curr_.size() << std::endl;
+    std::cout << "state curr: " << state_curr_[0] << std::endl;
     if (start.empty()){
       if (!state_curr_.empty()){
         start[0] = state_curr_[0];
