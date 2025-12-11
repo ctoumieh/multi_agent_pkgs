@@ -64,7 +64,7 @@ Agent::Agent()
       create_publisher<::nav_msgs::msg::Path>(topic_name + "/traj_hist", 10);
 
   // create publisher to publish the polyhedra
-  poly_pub_ = create_publisher<::decomp_ros_msgs::msg::PolyhedronArray>(
+  poly_pub_ = create_publisher<::visualization_msgs::msg::MarkerArray>(
       topic_name + "/polyhedra", 10);
 
   // create publisher to publish the seeds of the polyhedra
@@ -959,80 +959,105 @@ void Agent::PublishPolyhedraSeeds() {
 }
 
 void Agent::PublishPolyhedra() {
-    visualization_msgs::msg::MarkerArray msg;
+  visualization_msgs::msg::MarkerArray marker_array;
 
-    // Clear previous markers
-    visualization_msgs::msg::Marker clear;
-    clear.action = visualization_msgs::msg::Marker::DELETEALL;
-    msg.markers.push_back(clear);
+  // First marker: DELETE_ALL to clear previous markers
+  visualization_msgs::msg::Marker delete_marker;
+  delete_marker.header.frame_id = world_frame_;
+  delete_marker.header.stamp = now();
+  delete_marker.ns = "polyhedra";
+  delete_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+  marker_array.markers.push_back(delete_marker);
 
-    int id = 0;
-    for (size_t poly_idx = 0; poly_idx < safe_corridors_.size(); poly_idx++) {
-        const auto& poly = safe_corridors_[poly_idx];
-        const auto faces = cal_vertices(poly);  // vec_E<vec_Vec3f>
+  int marker_id = 0;
 
-        // --- Faces (TRIANGLE_LIST) ---
-        visualization_msgs::msg::Marker mesh;
-        mesh.header.frame_id = world_frame_;
-        mesh.header.stamp = now();
-        mesh.ns = "polyhedra";
-        mesh.id = id++;
-        mesh.type = visualization_msgs::msg::Marker::TRIANGLE_LIST;
-        mesh.action = visualization_msgs::msg::Marker::ADD;
-        mesh.pose.orientation.w = 1.0;
-        mesh.scale.x = 1.0;
-        mesh.scale.y = 1.0;
-        mesh.scale.z = 1.0;
-        mesh.color.r = 0.2;
-        mesh.color.g = 0.6;
-        mesh.color.b = 0.8;
-        mesh.color.a = 0.3;  // Face transparency
+  for (size_t poly_idx = 0; poly_idx < poly_vec_.size(); poly_idx++) {
+    const auto& poly = poly_vec_[poly_idx];
+    auto vertices = cal_vertices(poly);
 
-        for (const auto& face : faces) {
-            if (face.size() < 3) continue;
-            // Fan triangulation from first vertex
-            for (size_t i = 1; i + 1 < face.size(); i++) {
-                geometry_msgs::msg::Point p0, p1, p2;
-                p0.x = face[0](0); p0.y = face[0](1); p0.z = face[0](2);
-                p1.x = face[i](0); p1.y = face[i](1); p1.z = face[i](2);
-                p2.x = face[i+1](0); p2.y = face[i+1](1); p2.z = face[i+1](2);
-                mesh.points.push_back(p0);
-                mesh.points.push_back(p1);
-                mesh.points.push_back(p2);
-            }
-        }
-        msg.markers.push_back(mesh);
+    if (vertices.empty()) continue;
 
-        // --- Edges (LINE_LIST) ---
-        visualization_msgs::msg::Marker edges;
-        edges.header.frame_id =  world_frame_;
-        edges.header.stamp = now();
-        edges.ns = "polyhedra";
-        edges.id = id++;
-        edges.type = visualization_msgs::msg::Marker::LINE_LIST;
-        edges.action = visualization_msgs::msg::Marker::ADD;
-        edges.pose.orientation.w = 1.0;
-        edges.scale.x = 0.03;  // Line thickness (meters)
-        edges.color.r = 0.1;
-        edges.color.g = 0.3;
-        edges.color.b = 0.5;
-        edges.color.a = 0.8;   // Edge opacity
+    // Mesh marker (TRIANGLE_LIST) for faces
+    visualization_msgs::msg::Marker mesh_marker;
+    mesh_marker.header.frame_id = world_frame_;
+    mesh_marker.header.stamp = now();
+    mesh_marker.ns = "polyhedra_mesh";
+    mesh_marker.id = marker_id++;
+    mesh_marker.type = visualization_msgs::msg::Marker::TRIANGLE_LIST;
+    mesh_marker.action = visualization_msgs::msg::Marker::ADD;
+    mesh_marker.pose.orientation.w = 1.0;
+    mesh_marker.scale.x = 1.0;
+    mesh_marker.scale.y = 1.0;
+    mesh_marker.scale.z = 1.0;
+    mesh_marker.color.r = 0.0f;
+    mesh_marker.color.g = 0.67f;  // Match your MeshColor: 0, 170, 255
+    mesh_marker.color.b = 1.0f;
+    mesh_marker.color.a = 0.3f;   // Semi-transparent
 
-        for (const auto& face : faces) {
-            for (size_t i = 0; i < face.size(); i++) {
-                geometry_msgs::msg::Point p1, p2;
-                const auto& v1 = face[i];
-                const auto& v2 = face[(i + 1) % face.size()];
-                p1.x = v1(0); p1.y = v1(1); p1.z = v1(2);
-                p2.x = v2(0); p2.y = v2(1); p2.z = v2(2);
-                edges.points.push_back(p1);
-                edges.points.push_back(p2);
-            }
-        }
-        msg.markers.push_back(edges);
+    // Wireframe marker (LINE_LIST) for edges
+    visualization_msgs::msg::Marker edge_marker;
+    edge_marker.header.frame_id = world_frame_;
+    edge_marker.header.stamp = now();
+    edge_marker.ns = "polyhedra_edges";
+    edge_marker.id = marker_id++;
+    edge_marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+    edge_marker.action = visualization_msgs::msg::Marker::ADD;
+    edge_marker.pose.orientation.w = 1.0;
+    edge_marker.scale.x = 0.015;  // Line width
+    edge_marker.color.r = 1.0f;   // Match your BoundColor: 255, 0, 0
+    edge_marker.color.g = 0.0f;
+    edge_marker.color.b = 0.0f;
+    edge_marker.color.a = 0.8f;
+
+    // Get faces from polyhedron
+    const auto& hrep = poly.hrep();  // Hyperplane representation
+
+    // For each face, triangulate using fan method
+    for (const auto& face_vertices : vertices) {
+      if (face_vertices.size() < 3) continue;
+
+      // Fan triangulation from first vertex
+      for (size_t i = 1; i + 1 < face_vertices.size(); i++) {
+        geometry_msgs::msg::Point p0, p1, p2;
+        p0.x = face_vertices[0](0);
+        p0.y = face_vertices[0](1);
+        p0.z = face_vertices[0](2);
+        p1.x = face_vertices[i](0);
+        p1.y = face_vertices[i](1);
+        p1.z = face_vertices[i](2);
+        p2.x = face_vertices[i+1](0);
+        p2.y = face_vertices[i+1](1);
+        p2.z = face_vertices[i+1](2);
+
+        mesh_marker.points.push_back(p0);
+        mesh_marker.points.push_back(p1);
+        mesh_marker.points.push_back(p2);
+      }
+
+      // Add edges for wireframe
+      for (size_t i = 0; i < face_vertices.size(); i++) {
+        geometry_msgs::msg::Point p1, p2;
+        p1.x = face_vertices[i](0);
+        p1.y = face_vertices[i](1);
+        p1.z = face_vertices[i](2);
+        p2.x = face_vertices[(i+1) % face_vertices.size()](0);
+        p2.y = face_vertices[(i+1) % face_vertices.size()](1);
+        p2.z = face_vertices[(i+1) % face_vertices.size()](2);
+
+        edge_marker.points.push_back(p1);
+        edge_marker.points.push_back(p2);
+      }
     }
 
-    poly_pub_->publish(msg);
+    if (!mesh_marker.points.empty()) {
+      marker_array.markers.push_back(mesh_marker);
+    }
+    if (!edge_marker.points.empty()) {
+      marker_array.markers.push_back(edge_marker);
+    }
+  }
+
+  poly_pub_->publish(marker_array);
 }
 
 void Agent::SolveOptimizationProblem() {
@@ -2191,7 +2216,8 @@ void Agent::SaveAndDisplayCompTime(::std::vector<double> &comp_time,
 void Agent::SaveStateHistory() {
   if (save_stats_) {
     // one each row, first save the time then the state
-    ::std::string filename = "/tmp/planner_logs/state_hist_" + ::std::to_string(id_) + ".csv";
+    ::std::string filename =
+        "/tmp/planner_logs/state_hist_" + ::std::to_string(id_) + ".csv";
     ::std::ofstream myfile;
     myfile.open(filename);
     for (int i = 0; i < int(state_hist_.size()); i++) {
@@ -2261,7 +2287,8 @@ void Agent::SaveAndDisplayCommunicationLatency() {
               << ::std::endl;
 
   if (save_stats_) {
-    ::std::string filename = "/tmp/planner_logs/com_latency_" + ::std::to_string(id_) + ".csv";
+    ::std::string filename =
+        "/tmp/planner_logs/com_latency_" + ::std::to_string(id_) + ".csv";
     ::std::ofstream myfile;
     myfile.open(filename);
     for (int i = 0; i < n_rob_; i++) {

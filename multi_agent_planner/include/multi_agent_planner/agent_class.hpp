@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cmath>
 #include <deque>
+#include <filesystem>
 #include <fstream>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -17,12 +18,12 @@
 #include <nav_msgs/msg/path.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker.hpp>
-#include <filesystem>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "convex_decomp.hpp"
+#include "decomp_geometry/geometric_utils.h"
 #include "decomp_ros_msgs/msg/polyhedron_array.hpp"
 #include "decomp_ros_utils/data_ros_utils.h"
-#include "decomp_geometry/geometric_utils.h"
 #include "env_builder_msgs/msg/voxel_grid.hpp"
 #include "env_builder_msgs/msg/voxel_grid_stamped.hpp"
 #include "env_builder_msgs/srv/get_voxel_grid.hpp"
@@ -36,8 +37,8 @@
 #include "multi_agent_planner_msgs/msg/trajectory.hpp"
 #include "path_tools.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "swarmnxt_msgs/srv/get_planes.hpp"
 #include "swarmnxt_msgs/msg/plane.hpp"
+#include "swarmnxt_msgs/srv/get_planes.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 #include "voxel_grid.hpp"
 
@@ -129,7 +130,8 @@ private:
   // we can move along the trajectory
   void CheckReferenceTrajIncrement();
 
-  // request the safety planes that consitute the bounding box of the enviornment
+  // request the safety planes that consitute the bounding box of the
+  // enviornment
   void RequestSafetyPlanes();
 
   // remove points that are the middle of two segments that have an acute angle
@@ -284,7 +286,7 @@ private:
   // publisher to publish the current position of the agent
   ::rclcpp::Publisher<::visualization_msgs::msg::Marker>::SharedPtr pos_pub_;
   // publisher to publish polyhedra
-  ::rclcpp::Publisher<::decomp_ros_msgs::msg::PolyhedronArray>::SharedPtr
+  ::rclcpp::Publisher<::visualization_msgs::msg::MarkerArray>::SharedPtr
       poly_pub_;
   // publisher to publish the traversed trajectory so far
   ::rclcpp::Publisher<::nav_msgs::msg::Path>::SharedPtr traj_hist_pub_;
