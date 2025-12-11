@@ -22,6 +22,7 @@
 #include "convex_decomp.hpp"
 #include "decomp_ros_msgs/msg/polyhedron_array.hpp"
 #include "decomp_ros_utils/data_ros_utils.h"
+#include "decomp_geometry/geometric_utils.h"
 #include "env_builder_msgs/msg/voxel_grid.hpp"
 #include "env_builder_msgs/msg/voxel_grid_stamped.hpp"
 #include "env_builder_msgs/srv/get_voxel_grid.hpp"

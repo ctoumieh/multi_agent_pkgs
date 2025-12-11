@@ -959,11 +959,80 @@ void Agent::PublishPolyhedraSeeds() {
 }
 
 void Agent::PublishPolyhedra() {
-  // create polyhedra message
-  ::decomp_ros_msgs::msg::PolyhedronArray poly_msg =
-      ::DecompROS::polyhedron_array_to_ros(poly_vec_);
-  poly_msg.header.frame_id = world_frame_;
-  poly_pub_->publish(poly_msg);
+    visualization_msgs::msg::MarkerArray msg;
+
+    // Clear previous markers
+    visualization_msgs::msg::Marker clear;
+    clear.action = visualization_msgs::msg::Marker::DELETEALL;
+    msg.markers.push_back(clear);
+
+    int id = 0;
+    for (size_t poly_idx = 0; poly_idx < safe_corridors_.size(); poly_idx++) {
+        const auto& poly = safe_corridors_[poly_idx];
+        const auto faces = cal_vertices(poly);  // vec_E<vec_Vec3f>
+
+        // --- Faces (TRIANGLE_LIST) ---
+        visualization_msgs::msg::Marker mesh;
+        mesh.header.frame_id = world_frame_;
+        mesh.header.stamp = now();
+        mesh.ns = "polyhedra";
+        mesh.id = id++;
+        mesh.type = visualization_msgs::msg::Marker::TRIANGLE_LIST;
+        mesh.action = visualization_msgs::msg::Marker::ADD;
+        mesh.pose.orientation.w = 1.0;
+        mesh.scale.x = 1.0;
+        mesh.scale.y = 1.0;
+        mesh.scale.z = 1.0;
+        mesh.color.r = 0.2;
+        mesh.color.g = 0.6;
+        mesh.color.b = 0.8;
+        mesh.color.a = 0.3;  // Face transparency
+
+        for (const auto& face : faces) {
+            if (face.size() < 3) continue;
+            // Fan triangulation from first vertex
+            for (size_t i = 1; i + 1 < face.size(); i++) {
+                geometry_msgs::msg::Point p0, p1, p2;
+                p0.x = face[0](0); p0.y = face[0](1); p0.z = face[0](2);
+                p1.x = face[i](0); p1.y = face[i](1); p1.z = face[i](2);
+                p2.x = face[i+1](0); p2.y = face[i+1](1); p2.z = face[i+1](2);
+                mesh.points.push_back(p0);
+                mesh.points.push_back(p1);
+                mesh.points.push_back(p2);
+            }
+        }
+        msg.markers.push_back(mesh);
+
+        // --- Edges (LINE_LIST) ---
+        visualization_msgs::msg::Marker edges;
+        edges.header.frame_id =  world_frame_;
+        edges.header.stamp = now();
+        edges.ns = "polyhedra";
+        edges.id = id++;
+        edges.type = visualization_msgs::msg::Marker::LINE_LIST;
+        edges.action = visualization_msgs::msg::Marker::ADD;
+        edges.pose.orientation.w = 1.0;
+        edges.scale.x = 0.03;  // Line thickness (meters)
+        edges.color.r = 0.1;
+        edges.color.g = 0.3;
+        edges.color.b = 0.5;
+        edges.color.a = 0.8;   // Edge opacity
+
+        for (const auto& face : faces) {
+            for (size_t i = 0; i < face.size(); i++) {
+                geometry_msgs::msg::Point p1, p2;
+                const auto& v1 = face[i];
+                const auto& v2 = face[(i + 1) % face.size()];
+                p1.x = v1(0); p1.y = v1(1); p1.z = v1(2);
+                p2.x = v2(0); p2.y = v2(1); p2.z = v2(2);
+                edges.points.push_back(p1);
+                edges.points.push_back(p2);
+            }
+        }
+        msg.markers.push_back(edges);
+    }
+
+    poly_pub_->publish(msg);
 }
 
 void Agent::SolveOptimizationProblem() {

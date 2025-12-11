@@ -553,7 +553,7 @@ void MapBuilder::PointCloudCallback(
 
   // ==================== TIMED SECTION: SetUncertainToUnknown ====================
   auto t_start_unk = ::std::chrono::high_resolution_clock::now();
-  SetUncertainToUnknown(voxel_grid, pos_curr);
+  SetUncertainToUnknown(voxel_grid);
   auto t_end_unk = ::std::chrono::high_resolution_clock::now();
   uncertain_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_unk - t_start_unk).count());
 
@@ -946,45 +946,6 @@ MapBuilder::MergeVoxelGrids(const ::voxel_grid_util::VoxelGrid &vg_old,
     }
   }
   return vg_final;
-}
-
-void MapBuilder::SetUncertainToUnknown(::voxel_grid_util::VoxelGrid &vg, const ::Eigen::Vector3d &drone_pos) {
-  ::voxel_grid_util::VoxelGrid vg_final = vg;
-  int cube_size = ceil(inflation_dist_ / vg.GetVoxSize());
-  ::Eigen::Vector3i dim = vg.GetDim();
-
-  // Get drone voxel position
-  ::Eigen::Vector3d drone_local = vg.GetCoordLocal(drone_pos);
-  ::Eigen::Vector3i drone_voxel(floor(drone_local[0]), floor(drone_local[1]), floor(drone_local[2]));
-
-  for (int i = cube_size; i < dim[0] - cube_size; i++) {
-    for (int j = cube_size; j < dim[1] - cube_size; j++) {
-      for (int k = cube_size; k < dim[2] - cube_size; k++) {
-        ::Eigen::Vector3i pt(i, j, k);
-        if (vg.IsUnknown(pt)) {
-          for (int i_new = -cube_size; i_new <= cube_size; i_new++) {
-            for (int j_new = -cube_size; j_new <= cube_size; j_new++) {
-              for (int k_new = -cube_size; k_new <= cube_size; k_new++) {
-                ::Eigen::Vector3i neighbour(i + i_new, j + j_new, k + k_new);
-
-                // Skip if neighbour is close to drone
-                if (std::abs(neighbour[0] - drone_voxel[0]) <= 1 &&
-                    std::abs(neighbour[1] - drone_voxel[1]) <= 1 &&
-                    std::abs(neighbour[2] - drone_voxel[2]) <= 1) {
-                  continue;
-                }
-
-                if (!vg.IsOccupied(neighbour)) {
-                  vg_final.SetVoxelInt(neighbour, -1);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  vg = vg_final;
 }
 
 void MapBuilder::SetUncertainToUnknown(::voxel_grid_util::VoxelGrid &vg) {
