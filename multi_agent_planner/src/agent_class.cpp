@@ -989,8 +989,8 @@ void Agent::PublishPolyhedra() {
     mesh_marker.scale.x = 1.0;
     mesh_marker.scale.y = 1.0;
     mesh_marker.scale.z = 1.0;
-    mesh_marker.color.r = 1.0f;
-    mesh_marker.color.g = 0.0f;  // Match your MeshColor: 0, 170, 255
+    mesh_marker.color.r = 0.0f;
+    mesh_marker.color.g = 1.0f;  // Match your MeshColor: 0, 170, 255
     mesh_marker.color.b = 0.0f;
     mesh_marker.color.a = 0.1f;   // Semi-transparent
 
@@ -1004,8 +1004,8 @@ void Agent::PublishPolyhedra() {
     edge_marker.action = visualization_msgs::msg::Marker::ADD;
     edge_marker.pose.orientation.w = 1.0;
     edge_marker.scale.x = 0.015;  // Line width
-    edge_marker.color.r = 1.0f;   // Match your BoundColor: 255, 0, 0
-    edge_marker.color.g = 0.0f;
+    edge_marker.color.r = 0.0f;   // Match your BoundColor: 255, 0, 0
+    edge_marker.color.g = 1.0f;
     edge_marker.color.b = 0.0f;
     edge_marker.color.a = 0.8f;
 
