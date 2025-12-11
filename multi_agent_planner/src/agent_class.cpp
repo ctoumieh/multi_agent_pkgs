@@ -65,7 +65,7 @@ Agent::Agent()
 
   // create publisher to publish the polyhedra
   poly_pub_ = create_publisher<::visualization_msgs::msg::MarkerArray>(
-      topic_name + "/polyhedra", 10);
+      topic_name + "/polyhedra_markers", 10);
 
   // create publisher to publish the seeds of the polyhedra
   seeds_pub_ = create_publisher<::sensor_msgs::msg::PointCloud2>(
