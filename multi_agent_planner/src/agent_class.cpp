@@ -408,16 +408,6 @@ void Agent::UpdatePath() {
       start = {state_ini_[0], state_ini_[1], state_ini_[2]};
     }
 
-    std::cout << "state curr size: " << state_curr_.size() << std::endl;
-    std::cout << "state curr: " << state_curr_[0] << std::endl;
-    if (start.empty()){
-      if (!state_curr_.empty()){
-        start[0] = state_curr_[0];
-        start[1] = state_curr_[1];
-        start[2] = state_curr_[2];
-      }
-    }
-
     // find intermediate goal
     ::std::vector<double> goal_inter = GetIntermediateGoal(goal, vg_util);
 
