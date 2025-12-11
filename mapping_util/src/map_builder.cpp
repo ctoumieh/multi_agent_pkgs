@@ -553,7 +553,7 @@ void MapBuilder::PointCloudCallback(
 
   // ==================== TIMED SECTION: SetUncertainToUnknown ====================
   auto t_start_unk = ::std::chrono::high_resolution_clock::now();
-  SetUncertainToUnknown(voxel_grid);
+  SetUncertainToUnknown(voxel_grid, pos_curr);
   auto t_end_unk = ::std::chrono::high_resolution_clock::now();
   uncertain_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_unk - t_start_unk).count());
 
@@ -974,6 +974,32 @@ void MapBuilder::SetUncertainToUnknown(::voxel_grid_util::VoxelGrid &vg, const :
                   continue;
                 }
 
+                if (!vg.IsOccupied(neighbour)) {
+                  vg_final.SetVoxelInt(neighbour, -1);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  vg = vg_final;
+}
+
+void MapBuilder::SetUncertainToUnknown(::voxel_grid_util::VoxelGrid &vg) {
+  ::voxel_grid_util::VoxelGrid vg_final = vg;
+  int cube_size = ceil(inflation_dist_ / vg.GetVoxSize());
+  ::Eigen::Vector3i dim = vg.GetDim();
+  for (int i = cube_size; i < dim[0] - cube_size; i++) {
+    for (int j = cube_size; j < dim[1] - cube_size; j++) {
+      for (int k = cube_size; k < dim[2] - cube_size; k++) {
+        ::Eigen::Vector3i pt(i, j, k);
+        if (vg.IsUnknown(pt)) {
+          for (int i_new = -cube_size; i_new <= cube_size; i_new++) {
+            for (int j_new = -cube_size; j_new <= cube_size; j_new++) {
+              for (int k_new = -cube_size; k_new <= cube_size; k_new++) {
+                ::Eigen::Vector3i neighbour(i + i_new, j + j_new, k + k_new);
                 if (!vg.IsOccupied(neighbour)) {
                   vg_final.SetVoxelInt(neighbour, -1);
                 }

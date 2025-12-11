@@ -63,6 +63,7 @@ private:
                        const ::Eigen::Vector3d &start);
 
   void SetUncertainToUnknown(::voxel_grid_util::VoxelGrid &vg);
+  void SetUncertainToUnknown(::voxel_grid_util::VoxelGrid &vg, const ::Eigen::Vector3d &drone_pos);
 
   // Sim ClearLine
   void ClearLine(::voxel_grid_util::VoxelGrid &vg,
