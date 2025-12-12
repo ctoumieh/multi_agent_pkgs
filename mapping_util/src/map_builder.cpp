@@ -805,6 +805,7 @@ void MapBuilder::RaycastAndClear(::voxel_grid_util::VoxelGrid &vg,
 }
 
 // Vision ClearLine (Smart)
+// Vision ClearLine (Fixed)
 void MapBuilder::ClearLine(::voxel_grid_util::VoxelGrid &vg_curr,
                            const ::voxel_grid_util::VoxelGrid &vg_obstacles,
                            const ::voxel_grid_util::VoxelGrid &vg_accum,
@@ -835,34 +836,39 @@ void MapBuilder::ClearLine(::voxel_grid_util::VoxelGrid &vg_curr,
     ::std::vector<::Eigen::Vector3d> visited_points;
     double max_dist_raycast = (start_f - end).norm();
 
-    // Check against OBSTACLES grid (contains both Walls and Drones)
     bool line_clear = ::path_finding_util::IsLineClear(
       start_f, end, vg_obstacles, max_dist_raycast, collision_pt, visited_points);
 
-    if (!line_clear) {
-      // We hit something (Wall or Drone)
-      ::Eigen::Vector3d last_point = (end - start_f) * 1e-7 + collision_pt;
-      ::Eigen::Vector3i pt_int(last_point[0], last_point[1], last_point[2]);
+    Eigen::Vector3i collision_voxel(-1, -1, -1);  // Invalid by default
 
-      // CHECK: Is this a drone?
+    if (!line_clear) {
+      ::Eigen::Vector3d last_point = (end - start_f) * 1e-7 + collision_pt;
+      ::Eigen::Vector3i pt_int(std::floor(last_point[0]), std::floor(last_point[1]), std::floor(last_point[2]));
+      collision_voxel = pt_int;  // Save collision voxel
+
       int total_count = vg_accum.GetVoxelInt(pt_int);
       int drone_count = vg_drone.GetVoxelInt(pt_int);
 
       if ((total_count - drone_count) >= min_points_per_voxel_) {
-          // It is a WALL (Other points exist) -> Mark Occupied
           int current_val = vg_curr.GetVoxelInt(pt_int);
           vg_curr.SetVoxelInt(pt_int, std::min(voxel_max_val_, current_val + 1));
       } else {
-          // It is a DRONE (Mostly drone points) -> Mark Free
-          // This "removes" the drone from the map
           int current_val = vg_curr.GetVoxelInt(pt_int);
           vg_curr.SetVoxelInt(pt_int, std::max(voxel_min_val_, current_val - 1));
       }
     }
 
-    // Clear the air up to the collision
+    // Clear the air EXCLUDING the collision voxel
     for (size_t i = 0; i < visited_points.size(); i++) {
-      Eigen::Vector3i pt(visited_points[i](0), visited_points[i](1), visited_points[i](2));
+      Eigen::Vector3i pt(std::floor(visited_points[i](0)),
+                         std::floor(visited_points[i](1)),
+                         std::floor(visited_points[i](2)));
+
+      // Skip if this is the collision voxel
+      if (pt == collision_voxel) {
+        continue;
+      }
+
       int current_val = vg_curr.GetVoxelInt(pt);
       vg_curr.SetVoxelInt(pt, std::max(voxel_min_val_, current_val - 1));
     }
