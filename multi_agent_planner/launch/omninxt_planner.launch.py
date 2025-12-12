@@ -53,8 +53,9 @@ def launch_nodes(context, *args, **kwargs):
     voxel_size = 0.15
     min_points_per_voxel = 3
     occupancy_threshold = 2
-    free_threshold = 2
-    inflation_dist = 0.3
+    free_threshold = -8
+    voxel_min_val = -8
+    voxel_max_val = 3 
     potential_dist = 0.45
     n_it_decomp = 82 # 42 for 0.3 voxel size
     potential_dist_max = 1.2
@@ -81,6 +82,8 @@ def launch_nodes(context, *args, **kwargs):
                 {'min_points_per_voxel': min_points_per_voxel},
                 {'occupancy_threshold': occupancy_threshold},
                 {'free_threshold': free_threshold},
+                {'voxel_min_val': voxel_min_val},
+                {'voxel_max_val': voxel_max_val},
                 {'n_it_decomp': n_it_decomp},
                 {'potential_dist': potential_dist},
                 {'potential_dist_max': potential_dist_max},
