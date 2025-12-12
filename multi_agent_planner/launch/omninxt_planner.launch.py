@@ -51,6 +51,7 @@ def launch_nodes(context, *args, **kwargs):
     # Optional flags
     voxel_grid_range = [10.0, 10.0, 4.0]
     voxel_size = 0.15
+    inflation_dist = 0.3
     min_points_per_voxel = 3
     occupancy_threshold = 2
     free_threshold = -8
