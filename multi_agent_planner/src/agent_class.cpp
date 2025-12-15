@@ -972,10 +972,11 @@ void Agent::PublishPolyhedra() {
   int marker_id = 0;
 
   for (size_t poly_idx = 0; poly_idx < poly_vec_.size(); poly_idx++) {
-    const auto& poly = poly_vec_[poly_idx];
+    const auto &poly = poly_vec_[poly_idx];
     auto vertices = cal_vertices(poly);
 
-    if (vertices.empty()) continue;
+    if (vertices.empty())
+      continue;
 
     // Mesh marker (TRIANGLE_LIST) for faces
     visualization_msgs::msg::Marker mesh_marker;
@@ -990,9 +991,9 @@ void Agent::PublishPolyhedra() {
     mesh_marker.scale.y = 1.0;
     mesh_marker.scale.z = 1.0;
     mesh_marker.color.r = 0.0f;
-    mesh_marker.color.g = 1.0f;  // Match your MeshColor: 0, 170, 255
+    mesh_marker.color.g = 1.0f; // Match your MeshColor: 0, 170, 255
     mesh_marker.color.b = 0.0f;
-    mesh_marker.color.a = 0.1f;   // Semi-transparent
+    mesh_marker.color.a = 0.1f; // Semi-transparent
 
     // Wireframe marker (LINE_LIST) for edges
     visualization_msgs::msg::Marker edge_marker;
@@ -1003,15 +1004,16 @@ void Agent::PublishPolyhedra() {
     edge_marker.type = visualization_msgs::msg::Marker::LINE_LIST;
     edge_marker.action = visualization_msgs::msg::Marker::ADD;
     edge_marker.pose.orientation.w = 1.0;
-    edge_marker.scale.x = 0.015;  // Line width
-    edge_marker.color.r = 0.0f;   // Match your BoundColor: 255, 0, 0
+    edge_marker.scale.x = 0.015; // Line width
+    edge_marker.color.r = 0.0f;  // Match your BoundColor: 255, 0, 0
     edge_marker.color.g = 1.0f;
     edge_marker.color.b = 0.0f;
     edge_marker.color.a = 0.8f;
 
     // For each face, triangulate using fan method
-    for (const auto& face_vertices : vertices) {
-      if (face_vertices.size() < 3) continue;
+    for (const auto &face_vertices : vertices) {
+      if (face_vertices.size() < 3)
+        continue;
 
       // Fan triangulation from first vertex
       for (size_t i = 1; i + 1 < face_vertices.size(); i++) {
@@ -1022,9 +1024,9 @@ void Agent::PublishPolyhedra() {
         p1.x = face_vertices[i](0);
         p1.y = face_vertices[i](1);
         p1.z = face_vertices[i](2);
-        p2.x = face_vertices[i+1](0);
-        p2.y = face_vertices[i+1](1);
-        p2.z = face_vertices[i+1](2);
+        p2.x = face_vertices[i + 1](0);
+        p2.y = face_vertices[i + 1](1);
+        p2.z = face_vertices[i + 1](2);
 
         mesh_marker.points.push_back(p0);
         mesh_marker.points.push_back(p1);
@@ -1037,9 +1039,9 @@ void Agent::PublishPolyhedra() {
         p1.x = face_vertices[i](0);
         p1.y = face_vertices[i](1);
         p1.z = face_vertices[i](2);
-        p2.x = face_vertices[(i+1) % face_vertices.size()](0);
-        p2.y = face_vertices[(i+1) % face_vertices.size()](1);
-        p2.z = face_vertices[(i+1) % face_vertices.size()](2);
+        p2.x = face_vertices[(i + 1) % face_vertices.size()](0);
+        p2.y = face_vertices[(i + 1) % face_vertices.size()](1);
+        p2.z = face_vertices[(i + 1) % face_vertices.size()](2);
 
         edge_marker.points.push_back(p1);
         edge_marker.points.push_back(p2);
@@ -2091,6 +2093,53 @@ void Agent::ClearBoundary(::voxel_grid_util::VoxelGrid &voxel_grid) {
   /* } */
 }
 
+// Add this new function implementation:
+
+void Agent::ClearInitialPositionVoxels(
+    ::voxel_grid_util::VoxelGrid &voxel_grid) {
+  // Define the clearance box dimensions around initial position
+  const double clear_xy = 0.6; // ±0.6m in X and Y (forward/lateral)
+  const double clear_z = 0.3;  // ±0.3m in Z (vertical)
+
+  // Get the initial position
+  ::Eigen::Vector3d init_pos(state_ini_[0], state_ini_[1], state_ini_[2]);
+
+  // Get voxel grid properties
+  double voxel_size = voxel_grid.GetVoxSize();
+  ::Eigen::Vector3d origin = voxel_grid.GetOrigin();
+  ::Eigen::Vector3i dim = voxel_grid.GetDim();
+
+  // Calculate the bounding box in world coordinates
+  ::Eigen::Vector3d min_bound =
+      init_pos - ::Eigen::Vector3d(clear_xy, clear_xy, clear_z);
+  ::Eigen::Vector3d max_bound =
+      init_pos + ::Eigen::Vector3d(clear_xy, clear_xy, clear_z);
+
+  // Convert to voxel indices
+  ::Eigen::Vector3i min_idx, max_idx;
+  for (int i = 0; i < 3; i++) {
+    min_idx[i] = ::std::max(0, static_cast<int>(::std::floor(
+                                   (min_bound[i] - origin[i]) / voxel_size)));
+    max_idx[i] =
+        ::std::min(dim[i] - 1, static_cast<int>(::std::floor(
+                                   (max_bound[i] - origin[i]) / voxel_size)));
+  }
+
+  // Iterate through voxels in the bounding box and clear unknown ones
+  for (int x = min_idx[0]; x <= max_idx[0]; x++) {
+    for (int y = min_idx[1]; y <= max_idx[1]; y++) {
+      for (int z = min_idx[2]; z <= max_idx[2]; z++) {
+        ::Eigen::Vector3i voxel_idx(x, y, z);
+        int8_t voxel_val = voxel_grid.GetVoxelInt(voxel_idx);
+        // Only clear if the voxel is unknown (not occupied)
+        if (voxel_val == ENV_BUILDER_UNK) {
+          voxel_grid.SetVoxelInt(voxel_idx, ENV_BUILDER_FREE);
+        }
+      }
+    }
+  }
+}
+
 double Agent::GetDistanceSquared(::std::vector<double> &p1,
                                  ::std::vector<double> &p2) {
   double distance = (p1[0] - p2[0]) * (p1[0] - p2[0]) +
@@ -2587,6 +2636,9 @@ void Agent::VoxelGridResponseCallback(
     voxel_grid_mtx_.lock();
     voxel_grid_ =
         ::mapping_util::ConvertVGMsgToVGUtil(voxel_grid_stamped.voxel_grid);
+    if (planning_active_) {
+      ClearInitialPositionVoxels(voxel_grid_);
+    }
     voxel_grid_mtx_.unlock();
 
     voxel_grid_ready_ = true;
@@ -2635,6 +2687,9 @@ void Agent::MappingUtilVoxelGridCallback(
   voxel_grid_mtx_.lock();
   voxel_grid_ =
       ::mapping_util::ConvertVGMsgToVGUtil(voxel_grid_stamped.voxel_grid);
+  if (planning_active_) {
+    ClearInitialPositionVoxels(voxel_grid_);
+  }
   voxel_grid_mtx_.unlock();
 
   voxel_grid_ready_ = true;
@@ -2681,7 +2736,8 @@ void Agent::StartPlanningCallback(
   }
   traj_prev_ = traj_curr_;
 
-  // set planning to active
+  // clear voxels around initial position and set planning to active
+  ClearInitialPositionVoxels(voxel_grid_);
   planning_active_ = true;
 }
 

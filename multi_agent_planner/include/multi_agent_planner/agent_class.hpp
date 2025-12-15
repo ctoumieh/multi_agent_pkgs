@@ -174,6 +174,9 @@ private:
   // clear the borders of the voxel grid
   void ClearBoundary(::voxel_grid_util::VoxelGrid &voxel_grid);
 
+  // clear the unknown voxels around the initial position
+  void ClearInitialPositionVoxels(::voxel_grid_util::VoxelGrid &voxel_grid);
+
   // get distance squared between vectors
   double GetDistanceSquared(::std::vector<double> &p1,
                             ::std::vector<double> &p2);
