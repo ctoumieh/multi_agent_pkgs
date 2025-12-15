@@ -53,8 +53,8 @@ def launch_nodes(context, *args, **kwargs):
     voxel_size = 0.15
     inflation_dist = 0.3
     min_points_per_voxel = 3
-    occupied_threshold = 2
-    free_threshold = -2
+    occupied_threshold = 1
+    free_threshold = -1
     voxel_min_val = -2
     voxel_max_val = 2 
     potential_dist = 0.45
