@@ -9,27 +9,27 @@
 #include "tf2_ros/transform_listener.h"
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "voxel_grid.hpp"
+#include <chrono>
+#include <cmath>
 #include <env_builder_msgs/msg/voxel_grid_stamped.hpp>
 #include <env_builder_msgs/srv/get_voxel_grid.hpp>
-#include <iostream>
+#include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <mutex>
+#include <numeric>
+#include <omp.h>
+#include <pcl/common/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <stdlib.h>
 #include <string>
-#include <vector>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <chrono>
-#include <filesystem>
-#include <pcl/common/transforms.h>
-#include <numeric>
-#include <cmath>
-#include <omp.h>
+#include <vector>
 
 // Include the service for real vision
-#include "depth_estimation_ros2/srv/get_camera_info.hpp"
 #include "depth_estimation_ros2/msg/camera_info.hpp"
+#include "depth_estimation_ros2/srv/get_camera_info.hpp"
 
 namespace mapping_util {
 class MapBuilder : public ::rclcpp::Node {
@@ -44,8 +44,7 @@ private:
   void EnvironmentVoxelGridCallback(
       const ::env_builder_msgs::msg::VoxelGridStamped::SharedPtr vg_msg);
 
-  void PointCloudCallback(
-      const ::sensor_msgs::msg::PointCloud2::SharedPtr msg);
+  void PointCloudCallback(const ::sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
   ::voxel_grid_util::VoxelGrid
   MergeVoxelGrids(const ::voxel_grid_util::VoxelGrid &vg_old,
@@ -58,8 +57,6 @@ private:
   // Vision Raycaster
   void RaycastAndClear(::voxel_grid_util::VoxelGrid &vg_curr,
                        const ::voxel_grid_util::VoxelGrid &vg_obstacles,
-                       const ::voxel_grid_util::VoxelGrid &vg_accum,
-                       const ::voxel_grid_util::VoxelGrid &vg_drone,
                        const ::Eigen::Vector3d &start);
 
   void SetUncertainToUnknown(::voxel_grid_util::VoxelGrid &vg);
@@ -72,14 +69,13 @@ private:
   // Vision ClearLine
   void ClearLine(::voxel_grid_util::VoxelGrid &vg_curr,
                  const ::voxel_grid_util::VoxelGrid &vg_obstacles,
-                 const ::voxel_grid_util::VoxelGrid &vg_accum,
-                 const ::voxel_grid_util::VoxelGrid &vg_drone,
                  const ::Eigen::Vector3d &start, const ::Eigen::Vector3d &end);
 
   void ClearVoxelsCenter();
   void TfCallback(const ::tf2_msgs::msg::TFMessage::SharedPtr msg);
 
-  void SaveAndDisplayCompTime(::std::vector<double> &comp_time, ::std::string &filename);
+  void SaveAndDisplayCompTime(::std::vector<double> &comp_time,
+                              ::std::string &filename);
 
   void DisplayCompTime(::std::vector<double> &comp_time);
 
@@ -114,16 +110,21 @@ private:
   std::vector<std::string> swarm_frames_;
   double filter_radius_;
 
-  ::rclcpp::Subscription<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr voxel_grid_sub_;
-  ::rclcpp::Subscription<::sensor_msgs::msg::PointCloud2>::SharedPtr pointcloud_sub_;
+  ::rclcpp::Subscription<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr
+      voxel_grid_sub_;
+  ::rclcpp::Subscription<::sensor_msgs::msg::PointCloud2>::SharedPtr
+      pointcloud_sub_;
 
-  ::rclcpp::Client<::depth_estimation_ros2::srv::GetCameraInfo>::SharedPtr camera_info_client_;
+  ::rclcpp::Client<::depth_estimation_ros2::srv::GetCameraInfo>::SharedPtr
+      camera_info_client_;
 
   ::std::shared_ptr<::tf2_ros::Buffer> tf_buffer_;
   ::std::shared_ptr<::tf2_ros::TransformListener> tf_listener_;
   ::rclcpp::Subscription<::tf2_msgs::msg::TFMessage>::SharedPtr tf_subscriber_;
-  ::rclcpp::Publisher<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr voxel_grid_pub_;
-  ::rclcpp::Publisher<::visualization_msgs::msg::MarkerArray>::SharedPtr frustum_pub_;
+  ::rclcpp::Publisher<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr
+      voxel_grid_pub_;
+  ::rclcpp::Publisher<::visualization_msgs::msg::MarkerArray>::SharedPtr
+      frustum_pub_;
 
   ::std::vector<double> pos_curr_;
   ::Eigen::Matrix3d rot_mat_cam_;
@@ -136,12 +137,14 @@ private:
 
   // --- TIMING VECTORS ---
   // Vision pipeline timing (detailed)
-  ::std::vector<double> pcl_transform_comp_time_;      // PCL fromROSMsg + transformPointCloud
-  ::std::vector<double> point_counting_comp_time_;     // Swarm filtering & point counting loop
-  ::std::vector<double> obstacle_map_comp_time_;       // Obstacle map creation loop
-  ::std::vector<double> camera_update_comp_time_;      // Camera pose updates
-  ::std::vector<double> threshold_comp_time_;          // Thresholding loop
-  ::std::vector<double> shift_comp_time_;              // Grid shift logic
+  ::std::vector<double>
+      pcl_transform_comp_time_; // PCL fromROSMsg + transformPointCloud
+  ::std::vector<double>
+      point_counting_comp_time_; // Swarm filtering & point counting loop
+  ::std::vector<double> obstacle_map_comp_time_;  // Obstacle map creation loop
+  ::std::vector<double> camera_update_comp_time_; // Camera pose updates
+  ::std::vector<double> threshold_comp_time_;     // Thresholding loop
+  ::std::vector<double> shift_comp_time_;         // Grid shift logic
 
   // Existing timing vectors
   ::std::vector<double> raycast_comp_time_;
