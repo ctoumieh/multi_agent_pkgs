@@ -337,9 +337,11 @@ void MapBuilder::PointCloudCallback(
   Eigen::Vector3i dim_curr = voxel_grid_curr_.GetDim();
   double vox_size_curr = voxel_grid_curr_.GetVoxSize();
 
+  // Initialize vg_obstacles with unknown (-1) - will be set to:
+  // 100 for occupied, 0 for cleared by rays, -1 for unseen
   Eigen::Vector3d origin_obs = origin_curr;
   Eigen::Vector3i dim_obs = dim_curr;
-  ::voxel_grid_util::VoxelGrid vg_obstacles(origin_obs, dim_obs, vox_size_curr, true);
+  ::voxel_grid_util::VoxelGrid vg_obstacles(origin_obs, dim_obs, vox_size_curr, false);  // false = unknown default
 
   Eigen::Vector3d origin_acc = origin_curr;
   Eigen::Vector3i dim_acc = dim_curr;
@@ -460,8 +462,8 @@ void MapBuilder::PointCloudCallback(
   // ==================== TIMED SECTION: Obstacle Map Creation ====================
   auto t_start_obs = std::chrono::high_resolution_clock::now();
 
-  // 6. Create Obstacle Map AND directly increment vg_curr_ for occupied voxels
-  // This ensures occupied voxels are marked even if raycasting (which is sparse) misses them
+  // 6. Create Obstacle Map - only mark occupied voxels (100)
+  // vg_curr_ will be updated after raycasting based on vg_obstacles values
   Eigen::Vector3i dim = vg_accum.GetDim();
   for (int i = 0; i < dim[0]; i++) {
     for (int j = 0; j < dim[1]; j++) {
@@ -472,13 +474,10 @@ void MapBuilder::PointCloudCallback(
          int filtered_count = total_count - drone_count;
 
          if (filtered_count >= min_points_per_voxel_) {
-             vg_obstacles.SetVoxelInt(coord, 100);
-             // Directly increment vg_curr_ for occupied voxels
-             int current_val = voxel_grid_curr_.GetVoxelInt(coord);
-             voxel_grid_curr_.SetVoxelInt(coord, std::min(voxel_max_val_, current_val + 1));
-         } else {
-             vg_obstacles.SetVoxelInt(coord, 0);
+             vg_obstacles.SetVoxelInt(coord, 100);  // Occupied
+             // Don't update vg_curr_ here - will be done after raycasting
          }
+         // Leave non-occupied voxels as -1 (unknown) - rays will set them to 0 if cleared
       }
     }
   }
@@ -541,7 +540,7 @@ void MapBuilder::PointCloudCallback(
   ::Eigen::Vector3d pos_curr_local = voxel_grid_curr_.GetCoordLocal(pos_curr);
   auto t_start_ray = ::std::chrono::high_resolution_clock::now();
 
-  RaycastAndClear(voxel_grid_curr_, vg_obstacles, pos_curr_local);
+  RaycastAndClearVision(vg_obstacles, pos_curr_local);
 
   auto t_end_ray = ::std::chrono::high_resolution_clock::now();
   raycast_comp_time_.push_back(::std::chrono::duration<double, std::milli>(t_end_ray - t_start_ray).count());
@@ -753,20 +752,18 @@ void MapBuilder::EnvironmentVoxelGridCallback(
 // HELPERS
 // -------------------------------------------------------------------------
 
-// Vision Raycaster (simplified - occupied marking is done earlier)
-void MapBuilder::RaycastAndClear(::voxel_grid_util::VoxelGrid &vg_curr,
-                                 const ::voxel_grid_util::VoxelGrid &vg_obstacles,
-                                 const ::Eigen::Vector3d &start) {
-  ::Eigen::Vector3d origin = vg_curr.GetOrigin();
-  ::Eigen::Vector3i dim = vg_curr.GetDim();
+// Vision Raycaster - clears visible voxels in vg_obstacles, then updates vg_curr_
+void MapBuilder::RaycastAndClearVision(::voxel_grid_util::VoxelGrid &vg_obstacles,
+                                       const ::Eigen::Vector3d &start) {
+  ::Eigen::Vector3i dim = vg_obstacles.GetDim();
 
-  // Border Loops
+  // Cast rays to border voxels - this marks cleared voxels as 0 in vg_obstacles
   ::std::vector<int> k_vec = {0, dim(2) - 1};
   for (int i = 0; i < dim(0); i++) {
     for (int j = 0; j < dim(1); j++) {
       for (int k : k_vec) {
         ::Eigen::Vector3d end(i + 0.5, j + 0.5, k + 0.5);
-        ClearLine(vg_curr, vg_obstacles, start, end);
+        ClearLineVision(vg_obstacles, start, end);
       }
     }
   }
@@ -775,7 +772,7 @@ void MapBuilder::RaycastAndClear(::voxel_grid_util::VoxelGrid &vg_curr,
     for (int k = 0; k < dim(2); k++) {
       for (int j : j_vec) {
         ::Eigen::Vector3d end(i + 0.5, j + 0.5, k + 0.5);
-        ClearLine(vg_curr, vg_obstacles, start, end);
+        ClearLineVision(vg_obstacles, start, end);
       }
     }
   }
@@ -784,7 +781,30 @@ void MapBuilder::RaycastAndClear(::voxel_grid_util::VoxelGrid &vg_curr,
     for (int k = 0; k < dim(2); k++) {
       for (int i : i_vec) {
         ::Eigen::Vector3d end(i + 0.5, j + 0.5, k + 0.5);
-        ClearLine(vg_curr, vg_obstacles, start, end);
+        ClearLineVision(vg_obstacles, start, end);
+      }
+    }
+  }
+
+  // After all rays processed, update vg_curr_ based on vg_obstacles values:
+  // - 100 (occupied) → increment vg_curr_ by +1
+  // - 0 (free/cleared) → decrement vg_curr_ by -1
+  // - -1 (unknown/not seen) → no change
+  for (int i = 0; i < dim[0]; i++) {
+    for (int j = 0; j < dim[1]; j++) {
+      for (int k = 0; k < dim[2]; k++) {
+        Eigen::Vector3i coord(i, j, k);
+        int obs_val = vg_obstacles.GetVoxelInt(coord);
+        int curr_val = voxel_grid_curr_.GetVoxelInt(coord);
+
+        if (obs_val == 100) {
+          // Occupied - increment
+          voxel_grid_curr_.SetVoxelInt(coord, std::min(voxel_max_val_, curr_val + 1));
+        } else if (obs_val == 0) {
+          // Free/cleared - decrement
+          voxel_grid_curr_.SetVoxelInt(coord, std::max(voxel_min_val_, curr_val - 1));
+        }
+        // obs_val == -1 (unknown) → no change to vg_curr_
       }
     }
   }
@@ -826,11 +846,10 @@ void MapBuilder::RaycastAndClear(::voxel_grid_util::VoxelGrid &vg,
   vg = vg_final;
 }
 
-// Vision ClearLine (simplified - only clears free space, occupied marking done earlier)
-void MapBuilder::ClearLine(::voxel_grid_util::VoxelGrid &vg_curr,
-                           const ::voxel_grid_util::VoxelGrid &vg_obstacles,
-                           const ::Eigen::Vector3d &start,
-                           const ::Eigen::Vector3d &end) {
+// Vision ClearLine - marks cleared voxels as free (0) in vg_obstacles
+void MapBuilder::ClearLineVision(::voxel_grid_util::VoxelGrid &vg_obstacles,
+                                 const ::Eigen::Vector3d &start,
+                                 const ::Eigen::Vector3d &end) {
   bool in_fov = false;
   ::Eigen::Vector3d start_f = start;
 
@@ -864,10 +883,10 @@ void MapBuilder::ClearLine(::voxel_grid_util::VoxelGrid &vg_curr,
       // Record collision voxel to exclude from clearing
       ::Eigen::Vector3d last_point = (end - start_f) * 1e-7 + collision_pt;
       collision_voxel = Eigen::Vector3i(std::floor(last_point[0]), std::floor(last_point[1]), std::floor(last_point[2]));
-      // Note: We no longer increment here - occupied marking is done directly after vg_obstacles creation
     }
 
-    // Clear the air EXCLUDING the collision voxel
+    // Mark cleared voxels as free (0) in vg_obstacles, excluding collision voxel
+    Eigen::Vector3i dim = vg_obstacles.GetDim();
     for (size_t i = 0; i < visited_points.size(); i++) {
       Eigen::Vector3i pt(std::floor(visited_points[i](0)),
                          std::floor(visited_points[i](1)),
@@ -878,8 +897,15 @@ void MapBuilder::ClearLine(::voxel_grid_util::VoxelGrid &vg_curr,
         continue;
       }
 
-      int current_val = vg_curr.GetVoxelInt(pt);
-      vg_curr.SetVoxelInt(pt, std::max(voxel_min_val_, current_val - 1));
+      // Bounds check and mark as free
+      if (pt[0] >= 0 && pt[0] < dim[0] &&
+          pt[1] >= 0 && pt[1] < dim[1] &&
+          pt[2] >= 0 && pt[2] < dim[2]) {
+        // Only clear if not already occupied (don't overwrite obstacle detections)
+        if (vg_obstacles.GetVoxelInt(pt) != 100) {
+          vg_obstacles.SetVoxelInt(pt, 0);  // Mark as free
+        }
+      }
     }
   }
 }

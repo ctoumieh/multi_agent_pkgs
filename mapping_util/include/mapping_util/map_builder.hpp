@@ -54,10 +54,9 @@ private:
   void RaycastAndClear(::voxel_grid_util::VoxelGrid &vg,
                        const ::Eigen::Vector3d &start);
 
-  // Vision Raycaster
-  void RaycastAndClear(::voxel_grid_util::VoxelGrid &vg_curr,
-                       const ::voxel_grid_util::VoxelGrid &vg_obstacles,
-                       const ::Eigen::Vector3d &start);
+  // Vision Raycaster - clears visible voxels in vg_obstacles, then updates vg_curr_
+  void RaycastAndClearVision(::voxel_grid_util::VoxelGrid &vg_obstacles,
+                             const ::Eigen::Vector3d &start);
 
   void SetUncertainToUnknown(::voxel_grid_util::VoxelGrid &vg);
 
@@ -66,10 +65,9 @@ private:
                  ::voxel_grid_util::VoxelGrid &vg_final,
                  const ::Eigen::Vector3d &start, const ::Eigen::Vector3d &end);
 
-  // Vision ClearLine
-  void ClearLine(::voxel_grid_util::VoxelGrid &vg_curr,
-                 const ::voxel_grid_util::VoxelGrid &vg_obstacles,
-                 const ::Eigen::Vector3d &start, const ::Eigen::Vector3d &end);
+  // Vision ClearLine - marks cleared voxels as free in vg_obstacles
+  void ClearLineVision(::voxel_grid_util::VoxelGrid &vg_obstacles,
+                       const ::Eigen::Vector3d &start, const ::Eigen::Vector3d &end);
 
   void ClearVoxelsCenter();
   void TfCallback(const ::tf2_msgs::msg::TFMessage::SharedPtr msg);
