@@ -52,12 +52,12 @@ def launch_nodes(context, *args, **kwargs):
     voxel_grid_range = [10.0, 10.0, 4.0]
     voxel_size = 0.2
     inflation_dist = 0.4
-    min_points_per_voxel = 3
-    occupied_threshold = 3
+    min_points_per_voxel = 10
+    occupied_threshold = 1
     free_threshold = -1
     voxel_min_val = -2
     voxel_max_val = 15 
-    potential_dist = 0.4
+    potential_dist = 0.6
     n_it_decomp = 72 # 42 for 0.3 voxel size
     potential_dist_max = 1.2
     potential_speed_max = 2.0
@@ -119,7 +119,6 @@ def launch_nodes(context, *args, **kwargs):
             {'planner_active': planner_active},
             {'save_stats': save_stats}
         ],
-        prefix=['chrt -f 50'],
         # prefix=['xterm -fa default -fs 10 -xrm "XTerm*selectToClipboard: true" -e gdb -ex run --args'],
         # prefix=['xterm -fa default -fs 10 -hold -e'],
         output='screen',
