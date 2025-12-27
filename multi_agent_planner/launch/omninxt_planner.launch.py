@@ -119,6 +119,7 @@ def launch_nodes(context, *args, **kwargs):
             {'planner_active': planner_active},
             {'save_stats': save_stats}
         ],
+        prefix=['chrt -f 50'],
         # prefix=['xterm -fa default -fs 10 -xrm "XTerm*selectToClipboard: true" -e gdb -ex run --args'],
         # prefix=['xterm -fa default -fs 10 -hold -e'],
         output='screen',
