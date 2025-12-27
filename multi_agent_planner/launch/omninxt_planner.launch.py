@@ -56,7 +56,7 @@ def launch_nodes(context, *args, **kwargs):
     occupied_threshold = 1
     free_threshold = -1
     voxel_min_val = -2
-    voxel_max_val = 15 
+    voxel_max_val = 10 
     potential_dist = 0.6
     n_it_decomp = 72 # 42 for 0.3 voxel size
     potential_dist_max = 1.2
