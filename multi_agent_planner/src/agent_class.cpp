@@ -2098,7 +2098,7 @@ void Agent::ClearBoundary(::voxel_grid_util::VoxelGrid &voxel_grid) {
 void Agent::ClearInitialPositionVoxels(
     ::voxel_grid_util::VoxelGrid &voxel_grid) {
   // Define the clearance box dimensions around initial position
-  const double clear_xy = 0.6; // ±0.6m in X and Y (forward/lateral)
+  const double clear_xy = 1.0; // ±1.0m in X and Y (forward/lateral)
   const double clear_z = 0.3;  // ±0.3m in Z (vertical)
 
   // Get the initial position
