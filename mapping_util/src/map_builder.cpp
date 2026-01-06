@@ -254,6 +254,21 @@ void MapBuilder::PointCloudCallback(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
   if (!first_transform_received_) return;
 
+  static int callback_count = 0;
+  callback_count++;
+
+  if (!first_transform_received_) {
+    if (callback_count % 100 == 0) RCLCPP_WARN(this->get_logger(), "Callback blocked: Waiting for first TF...");
+    return;
+  }
+
+  // Periodic status report
+  if (callback_count % 50 == 1) {
+    RCLCPP_INFO(this->get_logger(), "--- Processing Frame %d ---", callback_count);
+    RCLCPP_INFO(this->get_logger(), "Status: Cameras=%zu, SwarmFrames=%zu, Radius=%.2f, Margin=%.2f",
+                cameras_.size(), swarm_frames_.size(), filter_radius_, drone_depth_margin_);
+  }
+
   auto t_start_total = std::chrono::high_resolution_clock::now();
 
   // 1. Get Transforms
