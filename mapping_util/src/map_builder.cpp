@@ -257,21 +257,9 @@ void MapBuilder::PointCloudCallback(
   static int callback_count = 0;
   callback_count++;
 
-  if (!first_transform_received_) {
-    if (callback_count % 100 == 0) RCLCPP_WARN(this->get_logger(), "Callback blocked: Waiting for first TF...");
-    return;
-  }
-
-  // Periodic status report
-  if (callback_count % 50 == 1) {
-    RCLCPP_INFO(this->get_logger(), "--- Processing Frame %d ---", callback_count);
-    RCLCPP_INFO(this->get_logger(), "Status: Cameras=%zu, SwarmFrames=%zu, Radius=%.2f, Margin=%.2f",
-                cameras_.size(), swarm_frames_.size(), filter_radius_, drone_depth_margin_);
-  }
-
   auto t_start_total = std::chrono::high_resolution_clock::now();
 
-  // 1. Get Transforms
+  // 1. Get Transforms: Sensor to World (for points) and Agent to World (for pos_curr)
   geometry_msgs::msg::TransformStamped tf_sensor_to_world;
   geometry_msgs::msg::TransformStamped tf_agent_to_world;
   try {
@@ -285,6 +273,12 @@ void MapBuilder::PointCloudCallback(
   ::Eigen::Vector3d pos_curr(tf_agent_to_world.transform.translation.x,
                              tf_agent_to_world.transform.translation.y,
                              tf_agent_to_world.transform.translation.z);
+
+  // Periodic Status Debugging
+  if (callback_count % 50 == 1) {
+    RCLCPP_INFO(this->get_logger(), "--- Frame %d | Cameras: %zu | Swarm: %zu | Radius: %.2f | Margin: %.2f ---",
+                callback_count, cameras_.size(), swarm_frames_.size(), filter_radius_, drone_depth_margin_);
+  }
 
   // 2. Initialize Grid (only on first call)
   if (voxel_grid_curr_.GetData().size() == 0) {
@@ -359,51 +353,41 @@ void MapBuilder::PointCloudCallback(
       float d_cam_x, d_cam_y, d_cam_z;
       float side;
       float z_min, z_max;
-      std::string frame_id;
   };
   std::vector<DroneFilter> drone_filters;
   const float s = static_cast<float>(filter_radius_);
 
   for (const auto& frame : swarm_frames_) {
-      Eigen::Vector3d other_drone_world;
       try {
-          auto t = tf_buffer_->lookupTransform(world_frame_, frame, msg->header.stamp, rclcpp::Duration::from_seconds(0.005));
-          other_drone_world << t.transform.translation.x, t.transform.translation.y, t.transform.translation.z;
-      } catch (...) { continue; }
+          auto t = tf_buffer_->lookupTransform(world_frame_, frame, msg->header.stamp, rclcpp::Duration::from_seconds(0.010));
+          Eigen::Vector3d d_world(t.transform.translation.x, t.transform.translation.y, t.transform.translation.z);
 
-      for (const auto& camera_info : cameras_) {
-          Eigen::Quaterniond q_c(camera_info.pose.orientation.w, camera_info.pose.orientation.x,
-                                 camera_info.pose.orientation.y, camera_info.pose.orientation.z);
-          Eigen::Vector3d t_c(camera_info.pose.position.x, camera_info.pose.position.y, camera_info.pose.position.z);
+          for (const auto& camera_info : cameras_) {
+              Eigen::Quaterniond q_c(camera_info.pose.orientation.w, camera_info.pose.orientation.x,
+                                     camera_info.pose.orientation.y, camera_info.pose.orientation.z);
+              Eigen::Vector3d t_c(camera_info.pose.position.x, camera_info.pose.position.y, camera_info.pose.position.z);
 
-          Eigen::Isometry3d cam_pose_rel = Eigen::Isometry3d::Identity();
-          cam_pose_rel.translate(t_c);
-          cam_pose_rel.rotate(q_c);
+              Eigen::Isometry3d cam_pose_rel = Eigen::Isometry3d::Identity();
+              cam_pose_rel.translate(t_c);
+              cam_pose_rel.rotate(q_c);
 
-          Eigen::Isometry3d cam_pose_world = iso_sensor * cam_pose_rel;
-          Eigen::Isometry3d world_to_cam = cam_pose_world.inverse();
-          Eigen::Vector3d d_cam = world_to_cam * other_drone_world;
+              Eigen::Isometry3d cam_pose_world = iso_sensor * cam_pose_rel;
+              Eigen::Isometry3d world_to_cam = cam_pose_world.inverse();
+              Eigen::Vector3d d_cam = world_to_cam * d_world;
 
-          if (d_cam.z() > 0.1) {
-              DroneFilter f;
-              f.world_to_cam = world_to_cam.matrix().cast<float>();
-              f.d_cam_x = static_cast<float>(d_cam.x());
-              f.d_cam_y = static_cast<float>(d_cam.y());
-              f.d_cam_z = static_cast<float>(d_cam.z());
-              f.side = s;
-              f.z_min = f.d_cam_z - static_cast<float>(drone_depth_margin_);
-              f.z_max = f.d_cam_z + static_cast<float>(drone_depth_margin_);
-              f.frame_id = frame;
-              drone_filters.push_back(f);
+              if (d_cam.z() > 0.1) {
+                  DroneFilter f;
+                  f.world_to_cam = world_to_cam.matrix().cast<float>();
+                  f.d_cam_x = static_cast<float>(d_cam.x());
+                  f.d_cam_y = static_cast<float>(d_cam.y());
+                  f.d_cam_z = static_cast<float>(d_cam.z());
+                  f.side = s;
+                  f.z_min = f.d_cam_z - static_cast<float>(drone_depth_margin_);
+                  f.z_max = f.d_cam_z + static_cast<float>(drone_depth_margin_);
+                  drone_filters.push_back(f);
+              }
           }
-      }
-  }
-
-  // DEBUG PRINT: Active Filters
-  if (!drone_filters.empty()) {
-    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
-      "Active filters: %zu. Swarm frames: %zu. Radius: %.2f, Margin: %.2f",
-      drone_filters.size(), swarm_frames_.size(), filter_radius_, drone_depth_margin_);
+      } catch (...) { continue; }
   }
 
   const float ox = static_cast<float>(origin_curr[0]), oy = static_cast<float>(origin_curr[1]), oz = static_cast<float>(origin_curr[2]);
@@ -417,7 +401,7 @@ void MapBuilder::PointCloudCallback(
   const int dx = dim_curr[0], dy = dim_curr[1];
   const size_t dxy = static_cast<size_t>(dx) * dy;
 
-  std::atomic<size_t> drone_points_caught{0};
+  std::atomic<int> points_filtered{0};
 
   #pragma omp parallel for schedule(static)
   for (size_t p = 0; p < num_points; ++p) {
@@ -445,31 +429,21 @@ void MapBuilder::PointCloudCallback(
             float d_ray_y = f.d_cam_y * pcz * inv_dz;
             float allowed_w = f.side * pcz * inv_dz;
 
-            float off_x = std::abs(pcx - d_ray_x);
-            float off_y = std::abs(pcy - d_ray_y);
-
-            if (off_x <= allowed_w && off_y <= allowed_w) {
-                is_drone = true; break;
+            if (std::abs(pcx - d_ray_x) <= allowed_w && std::abs(pcy - d_ray_y) <= allowed_w) {
+                is_drone = true;
+                points_filtered++;
+                break;
             }
         }
     }
-
-    if (is_drone) {
-        drone_points_caught++;
-        if (drone_data[idx] < 127) {
-            #pragma omp atomic
-            drone_data[idx]++;
-        }
+    if (is_drone && drone_data[idx] < 127) {
+        #pragma omp atomic
+        drone_data[idx]++;
     }
   }
 
-  // DEBUG PRINT: Catch Rate
-  if (drone_points_caught > 0) {
-    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
-      "Filtered %zu drone points this frame.", drone_points_caught.load());
-  } else if (!drone_filters.empty()) {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
-      "Filters are active but 0 points were caught. Checks might be too strict.");
+  if (callback_count % 50 == 1) {
+    RCLCPP_INFO(this->get_logger(), "Active Pyramids: %zu | Filtered Points: %d", drone_filters.size(), points_filtered.load());
   }
 
   auto t_end_count = std::chrono::high_resolution_clock::now();
@@ -481,18 +455,12 @@ void MapBuilder::PointCloudCallback(
     for (int j = 0; j < dim_curr[1]; j++) {
       for (int k = 0; k < dim_curr[2]; k++) {
          Eigen::Vector3i c(i, j, k);
-         int total = vg_accum.GetVoxelInt(c);
-         int drone = vg_drone.GetVoxelInt(c);
-         if (total - drone >= min_points_per_voxel_) {
-             vg_obstacles.SetVoxelInt(c, 100);
-         }
+         if (vg_accum.GetVoxelInt(c) - vg_drone.GetVoxelInt(c) >= min_points_per_voxel_) vg_obstacles.SetVoxelInt(c, 100);
       }
     }
   }
   auto t_end_obs = std::chrono::high_resolution_clock::now();
   obstacle_map_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_obs - t_start_obs).count());
-
-  // ... (Rest of function remains exactly as in fixed version) ...
 
   // ==================== TIMED SECTION: Camera Pose Updates ====================
   auto t_start_cam = std::chrono::high_resolution_clock::now();
@@ -556,6 +524,7 @@ void MapBuilder::PointCloudCallback(
   vg_msg_stamped.header.frame_id = world_frame_;
   voxel_grid_pub_->publish(vg_msg_stamped);
 
+  // ==================== TIMED SECTION: Grid Shift ====================
   auto t_start_shift = std::chrono::high_resolution_clock::now();
   Eigen::Vector3i drone_v_idx;
   for(int k=0; k<3; k++) drone_v_idx[k] = std::floor((pos_curr[k] - origin_curr[k]) / vox_size_curr);
