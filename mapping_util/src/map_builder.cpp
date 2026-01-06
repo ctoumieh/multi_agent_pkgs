@@ -252,7 +252,8 @@ void MapBuilder::InitializeRosParameters() {
 // -------------------------------------------------------------------------
 void MapBuilder::PointCloudCallback(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-  if (!first_transform_received_) return;
+  if (!first_transform_received_)
+    return;
 
   static int callback_count = 0;
   callback_count++;
@@ -263,10 +264,13 @@ void MapBuilder::PointCloudCallback(
   geometry_msgs::msg::TransformStamped tf_sensor_to_world;
   geometry_msgs::msg::TransformStamped tf_agent_to_world;
   try {
-    tf_sensor_to_world = tf_buffer_->lookupTransform(world_frame_, msg->header.frame_id, msg->header.stamp);
-    tf_agent_to_world = tf_buffer_->lookupTransform(world_frame_, agent_frame_, msg->header.stamp);
+    tf_sensor_to_world = tf_buffer_->lookupTransform(
+        world_frame_, msg->header.frame_id, msg->header.stamp);
+    tf_agent_to_world = tf_buffer_->lookupTransform(world_frame_, agent_frame_,
+                                                    msg->header.stamp);
   } catch (tf2::TransformException &ex) {
-    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "TF Error: %s", ex.what());
+    RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                          "TF Error: %s", ex.what());
     return;
   }
 
@@ -280,21 +284,26 @@ void MapBuilder::PointCloudCallback(
     origin[0] = (pos_curr[0] - voxel_grid_range_[0] / 2);
     origin[1] = (pos_curr[1] - voxel_grid_range_[1] / 2);
     origin[2] = (pos_curr[2] - voxel_grid_range_[2] / 2);
-    for(int i=0; i<3; ++i) origin[i] = floor(origin[i] / voxel_size_) * voxel_size_;
+    for (int i = 0; i < 3; ++i)
+      origin[i] = floor(origin[i] / voxel_size_) * voxel_size_;
 
     ::Eigen::Vector3i dim;
     dim[0] = floor(voxel_grid_range_[0] / voxel_size_);
     dim[1] = floor(voxel_grid_range_[1] / voxel_size_);
     dim[2] = floor(voxel_grid_range_[2] / voxel_size_);
-    voxel_grid_curr_ = ::voxel_grid_util::VoxelGrid(origin, dim, voxel_size_, true);
+    voxel_grid_curr_ =
+        ::voxel_grid_util::VoxelGrid(origin, dim, voxel_size_, true);
   }
 
   // ==================== TIMED SECTION: PCL Transform ====================
   auto t_start_pcl = std::chrono::high_resolution_clock::now();
 
-  Eigen::Quaterniond q_s(tf_sensor_to_world.transform.rotation.w, tf_sensor_to_world.transform.rotation.x,
-                         tf_sensor_to_world.transform.rotation.y, tf_sensor_to_world.transform.rotation.z);
-  Eigen::Vector3d t_s(tf_sensor_to_world.transform.translation.x, tf_sensor_to_world.transform.translation.y,
+  Eigen::Quaterniond q_s(tf_sensor_to_world.transform.rotation.w,
+                         tf_sensor_to_world.transform.rotation.x,
+                         tf_sensor_to_world.transform.rotation.y,
+                         tf_sensor_to_world.transform.rotation.z);
+  Eigen::Vector3d t_s(tf_sensor_to_world.transform.translation.x,
+                      tf_sensor_to_world.transform.translation.y,
                       tf_sensor_to_world.transform.translation.z);
 
   Eigen::Isometry3d iso_sensor = Eigen::Isometry3d::Identity();
@@ -302,181 +311,211 @@ void MapBuilder::PointCloudCallback(
   iso_sensor.rotate(q_s);
   Eigen::Matrix4f sensor_to_world_mat = iso_sensor.matrix().cast<float>();
 
-  const float r00 = sensor_to_world_mat(0,0), r01 = sensor_to_world_mat(0,1), r02 = sensor_to_world_mat(0,2), tx = sensor_to_world_mat(0,3);
-  const float r10 = sensor_to_world_mat(1,0), r11 = sensor_to_world_mat(1,1), r12 = sensor_to_world_mat(1,2), ty = sensor_to_world_mat(1,3);
-  const float r20 = sensor_to_world_mat(2,0), r21 = sensor_to_world_mat(2,1), r22 = sensor_to_world_mat(2,2), tz = sensor_to_world_mat(2,3);
+  const float r00 = sensor_to_world_mat(0, 0), r01 = sensor_to_world_mat(0, 1),
+              r02 = sensor_to_world_mat(0, 2), tx = sensor_to_world_mat(0, 3);
+  const float r10 = sensor_to_world_mat(1, 0), r11 = sensor_to_world_mat(1, 1),
+              r12 = sensor_to_world_mat(1, 2), ty = sensor_to_world_mat(1, 3);
+  const float r20 = sensor_to_world_mat(2, 0), r21 = sensor_to_world_mat(2, 1),
+              r22 = sensor_to_world_mat(2, 2), tz = sensor_to_world_mat(2, 3);
 
   const size_t num_points = msg->width * msg->height;
   const uint32_t point_step = msg->point_step;
-  const uint8_t* src_bytes = msg->data.data();
+  const uint8_t *src_bytes = msg->data.data();
 
   std::vector<float> cloud_transformed(num_points * 3);
 
-  #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
   for (size_t i = 0; i < num_points; ++i) {
-    const float* pt = reinterpret_cast<const float*>(src_bytes + i * point_step);
+    const float *pt =
+        reinterpret_cast<const float *>(src_bytes + i * point_step);
     const float x = pt[0], y = pt[1], z = pt[2];
     const size_t out_idx = i * 3;
-    cloud_transformed[out_idx + 0] = r00*x + r01*y + r02*z + tx;
-    cloud_transformed[out_idx + 1] = r10*x + r11*y + r12*z + ty;
-    cloud_transformed[out_idx + 2] = r20*x + r21*y + r22*z + tz;
+    cloud_transformed[out_idx + 0] = r00 * x + r01 * y + r02 * z + tx;
+    cloud_transformed[out_idx + 1] = r10 * x + r11 * y + r12 * z + ty;
+    cloud_transformed[out_idx + 2] = r20 * x + r21 * y + r22 * z + tz;
   }
 
   auto t_end_pcl = std::chrono::high_resolution_clock::now();
-  pcl_transform_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_pcl - t_start_pcl).count());
+  pcl_transform_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_pcl - t_start_pcl)
+          .count());
 
   // Sensor readiness check
   size_t nan_count = 0;
-  for (size_t i = 0; i < num_points; ++i) if (std::isnan(cloud_transformed[i * 3])) nan_count++;
-  if (static_cast<float>(nan_count) / num_points > 0.5f) return;
+  for (size_t i = 0; i < num_points; ++i)
+    if (std::isnan(cloud_transformed[i * 3]))
+      nan_count++;
+  if (static_cast<float>(nan_count) / num_points > 0.5f)
+    return;
 
   // Initialize Temp Grids
   Eigen::Vector3d origin_curr = voxel_grid_curr_.GetOrigin();
   Eigen::Vector3i dim_curr = voxel_grid_curr_.GetDim();
   double vox_size_curr = voxel_grid_curr_.GetVoxSize();
 
-  ::voxel_grid_util::VoxelGrid vg_obstacles(origin_curr, dim_curr, vox_size_curr, false);
-  ::voxel_grid_util::VoxelGrid vg_accum(origin_curr, dim_curr, vox_size_curr, true);
-  ::voxel_grid_util::VoxelGrid vg_drone(origin_curr, dim_curr, vox_size_curr, true);
+  ::voxel_grid_util::VoxelGrid vg_obstacles(origin_curr, dim_curr,
+                                            vox_size_curr, false);
+  ::voxel_grid_util::VoxelGrid vg_accum(origin_curr, dim_curr, vox_size_curr,
+                                        true);
+  ::voxel_grid_util::VoxelGrid vg_drone(origin_curr, dim_curr, vox_size_curr,
+                                        true);
 
-  // ==================== TIMED SECTION: Point Counting & Pyramid Filtering ====================
+  // ==================== TIMED SECTION: Point Counting & Pyramid Filtering
+  // ====================
   auto t_start_count = std::chrono::high_resolution_clock::now();
 
   struct DroneFilter {
-      Eigen::Matrix4f world_to_cam;
-      float d_cam_x, d_cam_y, d_cam_z;
-      float side;
-      float z_min, z_max;
+    Eigen::Matrix4f world_to_cam;
+    float d_cam_x, d_cam_y, d_cam_z;
+    float side;
+    float z_min, z_max;
   };
   std::vector<DroneFilter> drone_filters;
   const float s = static_cast<float>(filter_radius_);
 
-  // DIAGNOSTIC LOGGING
-  if (callback_count % 50 == 1) {
-    std::string swarm_list = "";
-    for(const auto& f : swarm_frames_) swarm_list += f + " ";
-    RCLCPP_INFO(this->get_logger(), "Looking for TFs: %s", swarm_list.c_str());
-  }
+  for (const auto &frame : swarm_frames_) {
+    try {
+      // Increase timeout to 15ms for swarm TFs which can be slightly delayed
+      auto t =
+          tf_buffer_->lookupTransform(world_frame_, frame, msg->header.stamp,
+                                      rclcpp::Duration::from_seconds(0.015));
+      Eigen::Vector3d d_world(t.transform.translation.x,
+                              t.transform.translation.y,
+                              t.transform.translation.z);
 
-  for (const auto& frame : swarm_frames_) {
-      try {
-          // Increase timeout to 15ms for swarm TFs which can be slightly delayed
-          auto t = tf_buffer_->lookupTransform(world_frame_, frame, msg->header.stamp, rclcpp::Duration::from_seconds(0.015));
-          Eigen::Vector3d d_world(t.transform.translation.x, t.transform.translation.y, t.transform.translation.z);
+      for (size_t c_idx = 0; c_idx < cameras_.size(); ++c_idx) {
+        const auto &camera_info = cameras_[c_idx];
+        Eigen::Quaterniond q_c(
+            camera_info.pose.orientation.w, camera_info.pose.orientation.x,
+            camera_info.pose.orientation.y, camera_info.pose.orientation.z);
+        Eigen::Vector3d t_c(camera_info.pose.position.x,
+                            camera_info.pose.position.y,
+                            camera_info.pose.position.z);
 
-          for (size_t c_idx = 0; c_idx < cameras_.size(); ++c_idx) {
-              const auto& camera_info = cameras_[c_idx];
-              Eigen::Quaterniond q_c(camera_info.pose.orientation.w, camera_info.pose.orientation.x,
-                                     camera_info.pose.orientation.y, camera_info.pose.orientation.z);
-              Eigen::Vector3d t_c(camera_info.pose.position.x, camera_info.pose.position.y, camera_info.pose.position.z);
+        Eigen::Isometry3d cam_pose_rel = Eigen::Isometry3d::Identity();
+        cam_pose_rel.translate(t_c);
+        cam_pose_rel.rotate(q_c);
 
-              Eigen::Isometry3d cam_pose_rel = Eigen::Isometry3d::Identity();
-              cam_pose_rel.translate(t_c);
-              cam_pose_rel.rotate(q_c);
+        Eigen::Isometry3d cam_pose_world = iso_sensor * cam_pose_rel;
+        Eigen::Isometry3d world_to_cam = cam_pose_world.inverse();
+        Eigen::Vector3d d_cam = world_to_cam * d_world;
 
-              Eigen::Isometry3d cam_pose_world = iso_sensor * cam_pose_rel;
-              Eigen::Isometry3d world_to_cam = cam_pose_world.inverse();
-              Eigen::Vector3d d_cam = world_to_cam * d_world;
-
-              if (d_cam.z() > 0.1) {
-                  DroneFilter f;
-                  f.world_to_cam = world_to_cam.matrix().cast<float>();
-                  f.d_cam_x = static_cast<float>(d_cam.x());
-                  f.d_cam_y = static_cast<float>(d_cam.y());
-                  f.d_cam_z = static_cast<float>(d_cam.z());
-                  f.side = s;
-                  f.z_min = f.d_cam_z - static_cast<float>(drone_depth_margin_);
-                  f.z_max = f.d_cam_z + static_cast<float>(drone_depth_margin_);
-                  drone_filters.push_back(f);
-              } else if (callback_count % 50 == 1) {
-                  RCLCPP_DEBUG(this->get_logger(), "Drone %s behind camera %zu (z=%.2f)", frame.c_str(), c_idx, d_cam.z());
-              }
-          }
-      } catch (tf2::TransformException &ex) {
-          if (callback_count % 50 == 1) {
-              RCLCPP_ERROR(this->get_logger(), "TF failure for drone %s: %s", frame.c_str(), ex.what());
-          }
-          continue;
+        if (d_cam.z() > 0.1) {
+          DroneFilter f;
+          f.world_to_cam = world_to_cam.matrix().cast<float>();
+          f.d_cam_x = static_cast<float>(d_cam.x());
+          f.d_cam_y = static_cast<float>(d_cam.y());
+          f.d_cam_z = static_cast<float>(d_cam.z());
+          f.side = s;
+          f.z_min = f.d_cam_z - static_cast<float>(drone_depth_margin_);
+          f.z_max = f.d_cam_z + static_cast<float>(drone_depth_margin_);
+          drone_filters.push_back(f);
+        }
       }
+    } catch (tf2::TransformException &ex) {
+      RCLCPP_ERROR(this->get_logger(), "TF failure for drone %s: %s",
+                   frame.c_str(), ex.what());
+      continue;
+    }
   }
 
-  const float ox = static_cast<float>(origin_curr[0]), oy = static_cast<float>(origin_curr[1]), oz = static_cast<float>(origin_curr[2]);
+  const float ox = static_cast<float>(origin_curr[0]),
+              oy = static_cast<float>(origin_curr[1]),
+              oz = static_cast<float>(origin_curr[2]);
   const float x_max_g = ox + dim_curr[0] * static_cast<float>(vox_size_curr);
   const float y_max_g = oy + dim_curr[1] * static_cast<float>(vox_size_curr);
   const float z_max_g = oz + dim_curr[2] * static_cast<float>(vox_size_curr);
   const float inv_vs = 1.0f / static_cast<float>(vox_size_curr);
 
-  std::vector<int8_t>& accum_data = vg_accum.GetData();
-  std::vector<int8_t>& drone_data = vg_drone.GetData();
+  std::vector<int8_t> &accum_data = vg_accum.GetData();
+  std::vector<int8_t> &drone_data = vg_drone.GetData();
   const int dx = dim_curr[0], dy = dim_curr[1];
   const size_t dxy = static_cast<size_t>(dx) * dy;
 
   std::atomic<int> points_filtered{0};
 
-  #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
   for (size_t p = 0; p < num_points; ++p) {
     const size_t p_idx = p * 3;
-    const float px = cloud_transformed[p_idx + 0], py = cloud_transformed[p_idx + 1], pz = cloud_transformed[p_idx + 2];
-    if (std::isnan(px) || px < ox || px >= x_max_g || py < oy || py >= y_max_g || pz < oz || pz >= z_max_g) continue;
+    const float px = cloud_transformed[p_idx + 0],
+                py = cloud_transformed[p_idx + 1],
+                pz = cloud_transformed[p_idx + 2];
+    if (std::isnan(px) || px < ox || px >= x_max_g || py < oy ||
+        py >= y_max_g || pz < oz || pz >= z_max_g)
+      continue;
 
-    const int i = static_cast<int>((px - ox) * inv_vs), j = static_cast<int>((py - oy) * inv_vs), k = static_cast<int>((pz - oz) * inv_vs);
+    const int i = static_cast<int>((px - ox) * inv_vs),
+              j = static_cast<int>((py - oy) * inv_vs),
+              k = static_cast<int>((pz - oz) * inv_vs);
     const size_t idx = i + j * dx + k * dxy;
 
     if (accum_data[idx] < 127) {
-        #pragma omp atomic
-        accum_data[idx]++;
+#pragma omp atomic
+      accum_data[idx]++;
     }
 
-    for (const auto& f : drone_filters) {
-        float pcx = f.world_to_cam(0,0)*px + f.world_to_cam(0,1)*py + f.world_to_cam(0,2)*pz + f.world_to_cam(0,3);
-        float pcy = f.world_to_cam(1,0)*px + f.world_to_cam(1,1)*py + f.world_to_cam(1,2)*pz + f.world_to_cam(1,3);
-        float pcz = f.world_to_cam(2,0)*px + f.world_to_cam(2,1)*py + f.world_to_cam(2,2)*pz + f.world_to_cam(2,3);
+    for (const auto &f : drone_filters) {
+      float pcx = f.world_to_cam(0, 0) * px + f.world_to_cam(0, 1) * py +
+                  f.world_to_cam(0, 2) * pz + f.world_to_cam(0, 3);
+      float pcy = f.world_to_cam(1, 0) * px + f.world_to_cam(1, 1) * py +
+                  f.world_to_cam(1, 2) * pz + f.world_to_cam(1, 3);
+      float pcz = f.world_to_cam(2, 0) * px + f.world_to_cam(2, 1) * py +
+                  f.world_to_cam(2, 2) * pz + f.world_to_cam(2, 3);
 
-        if (pcz >= f.z_min && pcz <= f.z_max) {
-            float inv_dz = 1.0f / f.d_cam_z;
-            float d_ray_x = f.d_cam_x * pcz * inv_dz;
-            float d_ray_y = f.d_cam_y * pcz * inv_dz;
-            float allowed_w = f.side * pcz * inv_dz;
+      if (pcz >= f.z_min && pcz <= f.z_max) {
+        float inv_dz = 1.0f / f.d_cam_z;
+        float d_ray_x = f.d_cam_x * pcz * inv_dz;
+        float d_ray_y = f.d_cam_y * pcz * inv_dz;
+        float allowed_w = f.side * pcz * inv_dz;
 
-            if (std::abs(pcx - d_ray_x) <= allowed_w && std::abs(pcy - d_ray_y) <= allowed_w) {
-                points_filtered++;
-                if (drone_data[idx] < 127) {
-                    #pragma omp atomic
-                    drone_data[idx]++;
-                }
-                break;
-            }
+        if (std::abs(pcx - d_ray_x) <= allowed_w &&
+            std::abs(pcy - d_ray_y) <= allowed_w) {
+          points_filtered++;
+          if (drone_data[idx] < 127) {
+#pragma omp atomic
+            drone_data[idx]++;
+          }
+          break;
         }
+      }
     }
-  }
-
-  if (callback_count % 50 == 1) {
-    RCLCPP_INFO(this->get_logger(), "Active Pyramids: %zu | Filtered Points: %d", drone_filters.size(), points_filtered.load());
   }
 
   auto t_end_count = std::chrono::high_resolution_clock::now();
-  point_counting_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_count - t_start_count).count());
+  point_counting_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_count - t_start_count)
+          .count());
 
-  // ==================== TIMED SECTION: Obstacle Map Creation ====================
+  // ==================== TIMED SECTION: Obstacle Map Creation
+  // ====================
   auto t_start_obs = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < dim_curr[0]; i++) {
     for (int j = 0; j < dim_curr[1]; j++) {
       for (int k = 0; k < dim_curr[2]; k++) {
-         Eigen::Vector3i c(i, j, k);
-         if (vg_accum.GetVoxelInt(c) - vg_drone.GetVoxelInt(c) >= min_points_per_voxel_) vg_obstacles.SetVoxelInt(c, 100);
+        Eigen::Vector3i c(i, j, k);
+        if (vg_accum.GetVoxelInt(c) - vg_drone.GetVoxelInt(c) >=
+            min_points_per_voxel_)
+          vg_obstacles.SetVoxelInt(c, 100);
       }
     }
   }
   auto t_end_obs = std::chrono::high_resolution_clock::now();
-  obstacle_map_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_obs - t_start_obs).count());
+  obstacle_map_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_obs - t_start_obs)
+          .count());
 
-  // ==================== TIMED SECTION: Camera Pose Updates ====================
+  // ==================== TIMED SECTION: Camera Pose Updates
+  // ====================
   auto t_start_cam = std::chrono::high_resolution_clock::now();
   cameras_in_local_grid_.clear();
   for (const auto &camera_info : cameras_) {
-    Eigen::Quaterniond qc(camera_info.pose.orientation.w, camera_info.pose.orientation.x, camera_info.pose.orientation.y, camera_info.pose.orientation.z);
-    Eigen::Vector3d tc(camera_info.pose.position.x, camera_info.pose.position.y, camera_info.pose.position.z);
-    Eigen::Isometry3d cp_rel = Eigen::Isometry3d::Identity(); cp_rel.translate(tc).rotate(qc);
+    Eigen::Quaterniond qc(
+        camera_info.pose.orientation.w, camera_info.pose.orientation.x,
+        camera_info.pose.orientation.y, camera_info.pose.orientation.z);
+    Eigen::Vector3d tc(camera_info.pose.position.x, camera_info.pose.position.y,
+                       camera_info.pose.position.z);
+    Eigen::Isometry3d cp_rel = Eigen::Isometry3d::Identity();
+    cp_rel.translate(tc).rotate(qc);
     Eigen::Isometry3d cp_world = iso_sensor * cp_rel;
     Eigen::Isometry3d cp_final = Eigen::Isometry3d::Identity();
     cp_final.translate(voxel_grid_curr_.GetCoordLocal(cp_world.translation()));
@@ -484,44 +523,61 @@ void MapBuilder::PointCloudCallback(
     cameras_in_local_grid_.push_back(cp_final);
   }
   auto t_end_cam = std::chrono::high_resolution_clock::now();
-  camera_update_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_cam - t_start_cam).count());
+  camera_update_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_cam - t_start_cam)
+          .count());
 
-  // ==================== TIMED SECTION: Raycast & Processing ====================
+  // ==================== TIMED SECTION: Raycast & Processing
+  // ====================
   auto t_start_ray = std::chrono::high_resolution_clock::now();
   RaycastAndClearVision(vg_obstacles, voxel_grid_curr_.GetCoordLocal(pos_curr));
   auto t_end_ray = std::chrono::high_resolution_clock::now();
-  raycast_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_ray - t_start_ray).count());
+  raycast_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_ray - t_start_ray)
+          .count());
 
   auto t_start_thresh = std::chrono::high_resolution_clock::now();
-  ::voxel_grid_util::VoxelGrid voxel_grid(origin_curr, dim_curr, vox_size_curr, true);
+  ::voxel_grid_util::VoxelGrid voxel_grid(origin_curr, dim_curr, vox_size_curr,
+                                          true);
   for (int i = 0; i < dim_curr[0]; i++) {
     for (int j = 0; j < dim_curr[1]; j++) {
       for (int k = 0; k < dim_curr[2]; k++) {
         Eigen::Vector3i c(i, j, k);
         int val = voxel_grid_curr_.GetVoxelInt(c);
-        if (val >= occupied_threshold_) voxel_grid.SetVoxelInt(c, 100);
-        else if (val <= free_threshold_) voxel_grid.SetVoxelInt(c, 0);
-        else voxel_grid.SetVoxelInt(c, -1);
+        if (val >= occupied_threshold_)
+          voxel_grid.SetVoxelInt(c, 100);
+        else if (val <= free_threshold_)
+          voxel_grid.SetVoxelInt(c, 0);
+        else
+          voxel_grid.SetVoxelInt(c, -1);
       }
     }
   }
   auto t_end_thresh = std::chrono::high_resolution_clock::now();
-  threshold_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_thresh - t_start_thresh).count());
+  threshold_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_thresh - t_start_thresh)
+          .count());
 
   auto t_start_unk = std::chrono::high_resolution_clock::now();
   SetUncertainToUnknown(voxel_grid);
   auto t_end_unk = std::chrono::high_resolution_clock::now();
-  uncertain_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_unk - t_start_unk).count());
+  uncertain_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_unk - t_start_unk)
+          .count());
 
   auto t_start_inf = std::chrono::high_resolution_clock::now();
   voxel_grid.InflateObstacles(inflation_dist_);
   auto t_end_inf = std::chrono::high_resolution_clock::now();
-  inflate_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_inf - t_start_inf).count());
+  inflate_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_inf - t_start_inf)
+          .count());
 
   auto t_start_pot = std::chrono::high_resolution_clock::now();
   CreatePotentialFieldParallel(voxel_grid, potential_dist_, potential_pow_);
   auto t_end_pot = std::chrono::high_resolution_clock::now();
-  potential_field_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_pot - t_start_pot).count());
+  potential_field_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_pot - t_start_pot)
+          .count());
 
   ::env_builder_msgs::msg::VoxelGridStamped vg_msg_stamped;
   vg_msg_stamped.voxel_grid = ConvertVGUtilToVGMsg(voxel_grid);
@@ -532,7 +588,8 @@ void MapBuilder::PointCloudCallback(
 
   auto t_start_shift = std::chrono::high_resolution_clock::now();
   Eigen::Vector3i drone_v_idx;
-  for(int k=0; k<3; k++) drone_v_idx[k] = std::floor((pos_curr[k] - origin_curr[k]) / vox_size_curr);
+  for (int k = 0; k < 3; k++)
+    drone_v_idx[k] = std::floor((pos_curr[k] - origin_curr[k]) / vox_size_curr);
   Eigen::Vector3i shift = drone_v_idx - (dim_curr / 2);
   if (shift.norm() > 0) {
     Eigen::Vector3d n_o = origin_curr + shift.cast<double>() * vox_size_curr;
@@ -550,10 +607,14 @@ void MapBuilder::PointCloudCallback(
     voxel_grid_curr_ = shifted_grid;
   }
   auto t_end_shift = std::chrono::high_resolution_clock::now();
-  shift_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_shift - t_start_shift).count());
+  shift_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_shift - t_start_shift)
+          .count());
 
   auto t_end_total = std::chrono::high_resolution_clock::now();
-  tot_comp_time_.push_back(std::chrono::duration<double, std::milli>(t_end_total - t_start_total).count());
+  tot_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_total - t_start_total)
+          .count());
 }
 
 // -------------------------------------------------------------------------
