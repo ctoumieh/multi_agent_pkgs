@@ -261,10 +261,10 @@ void MapBuilder::PointCloudCallback(
   geometry_msgs::msg::TransformStamped tf_sensor_to_world;
   geometry_msgs::msg::TransformStamped tf_agent_to_world;
   try {
-    // Transform from the pointcloud frame (typically drone_centroid) to world
+    // Sensor frame (typically drone_centroid) to world
     tf_sensor_to_world = tf_buffer_->lookupTransform(
         world_frame_, msg->header.frame_id, msg->header.stamp);
-    // Transform from the agent base frame (e.g., agent_0) to world
+    // Agent base frame (agent_0) to world
     tf_agent_to_world = tf_buffer_->lookupTransform(world_frame_, agent_frame_,
                                                     msg->header.stamp);
   } catch (tf2::TransformException &ex) {
@@ -273,8 +273,6 @@ void MapBuilder::PointCloudCallback(
     return;
   }
 
-  // Current position for grid logic (usually relative to the agent's center of
-  // mass/frame)
   ::Eigen::Vector3d pos_curr(tf_agent_to_world.transform.translation.x,
                              tf_agent_to_world.transform.translation.y,
                              tf_agent_to_world.transform.translation.z);
@@ -372,7 +370,6 @@ void MapBuilder::PointCloudCallback(
     float z_min, z_max;
   };
   std::vector<DroneFilter> drone_filters;
-
   const float s = static_cast<float>(filter_radius_);
 
   for (const auto &frame : swarm_frames_) {
@@ -399,8 +396,6 @@ void MapBuilder::PointCloudCallback(
       cam_pose_rel.translate(t_c);
       cam_pose_rel.rotate(q_c);
 
-      // Cameras are relative to the pointcloud base frame (centroid), not the
-      // agent frame
       Eigen::Isometry3d cam_pose_world = iso_sensor * cam_pose_rel;
       Eigen::Isometry3d world_to_cam = cam_pose_world.inverse();
       Eigen::Vector3d d_cam = world_to_cam * other_drone_world;
@@ -448,7 +443,8 @@ void MapBuilder::PointCloudCallback(
     const size_t idx = i + j * dx + k * dxy;
 
     if (accum_data[idx] < 127) {
-#pragma omp atomic accum_data[idx]++;
+#pragma omp atomic
+      accum_data[idx]++;
     }
 
     bool is_drone = false;
@@ -461,7 +457,6 @@ void MapBuilder::PointCloudCallback(
                   f.world_to_cam(2, 2) * pz + f.world_to_cam(2, 3);
 
       if (pcz >= f.z_min && pcz <= f.z_max) {
-        // Capped dynamic pyramid check
         float inv_dz = 1.0f / f.d_cam_z;
         float d_ray_x = f.d_cam_x * pcz * inv_dz;
         float d_ray_y = f.d_cam_y * pcz * inv_dz;
@@ -475,7 +470,8 @@ void MapBuilder::PointCloudCallback(
       }
     }
     if (is_drone && drone_data[idx] < 127) {
-#pragma omp atomic drone_data[idx]++;
+#pragma omp atomic
+      drone_data[idx]++;
     }
   }
 
@@ -513,7 +509,8 @@ void MapBuilder::PointCloudCallback(
     Eigen::Vector3d tc(camera_info.pose.position.x, camera_info.pose.position.y,
                        camera_info.pose.position.z);
     Eigen::Isometry3d cp_rel = Eigen::Isometry3d::Identity();
-    cp_rel.translate(tc).rotate(qc);
+    cp_rel.translate(tc);
+    cp_rel.rotate(qc);
     Eigen::Isometry3d cp_world = iso_sensor * cp_rel;
     Eigen::Isometry3d cp_final = Eigen::Isometry3d::Identity();
     cp_final.translate(voxel_grid_curr_.GetCoordLocal(cp_world.translation()));
