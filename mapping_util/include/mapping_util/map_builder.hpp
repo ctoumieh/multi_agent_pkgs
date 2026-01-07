@@ -5,6 +5,7 @@
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "path_tools.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 #include "visualization_msgs/msg/marker_array.hpp"
@@ -26,7 +27,6 @@
 #include <string>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <vector>
-#include "std_msgs/msg/string.hpp"
 
 // Include the service for real vision
 #include "depth_estimation_ros2/msg/camera_info.hpp"
@@ -55,8 +55,9 @@ private:
   void RaycastAndClear(::voxel_grid_util::VoxelGrid &vg,
                        const ::Eigen::Vector3d &start);
 
-  // Vision Raycaster - clears visible voxels in vg_obstacles, then updates vg_curr_
-  void RaycastAndClearVision(::voxel_grid_util::VoxelGrid &vg_obstacles,
+  // Vision Raycaster - clears visible voxels in vg_obstacles, then updates
+  // vg_curr_
+  void RaycastAndClearVision(::voxel_grid_util::VoxelGrid &vg_raycast_logic,
                              const ::Eigen::Vector3d &start);
 
   void SetUncertainToUnknown(::voxel_grid_util::VoxelGrid &vg);
@@ -68,7 +69,8 @@ private:
 
   // Vision ClearLine - marks cleared voxels as free in vg_obstacles
   void ClearLineVision(::voxel_grid_util::VoxelGrid &vg_obstacles,
-                       const ::Eigen::Vector3d &start, const ::Eigen::Vector3d &end);
+                       const ::Eigen::Vector3d &start,
+                       const ::Eigen::Vector3d &end);
 
   void ClearVoxelsCenter();
   void TfCallback(const ::tf2_msgs::msg::TFMessage::SharedPtr msg);

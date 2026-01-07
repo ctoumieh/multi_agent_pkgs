@@ -203,7 +203,7 @@ void MapBuilder::DeclareRosParameters() {
   declare_parameter("save_stats", false); // Default to false
   declare_parameter("swarm_frames", std::vector<std::string>());
   declare_parameter("filter_radius", 0.6);
-  declare_parameter("drone_depth_margin", 1.0);
+  declare_parameter("drone_depth_margin", 0.5);
 }
 
 void MapBuilder::InitializeRosParameters() {
@@ -492,23 +492,38 @@ void MapBuilder::PointCloudCallback(
       std::chrono::duration<double, std::milli>(t_end_count - t_start_count)
           .count());
 
-  // ==================== TIMED SECTION: Obstacle Map Creation
-  // ====================
-  auto t_start_obs = std::chrono::high_resolution_clock::now();
+  // ==================== TIMED SECTION: Raycast Logic Grid Setup
+  // ==================== We create a single grid to handle ray stopping logic.
+  // -1: Unknown (default)
+  // 100: Hits (Drones OR Static Obstacles) - Ray stops here
+  // 0: Cleared (marked during raycasting)
+  auto t_start_ray_setup = std::chrono::high_resolution_clock::now();
+
+  // Initialize with -1 (Unknown)
+  ::voxel_grid_util::VoxelGrid vg_raycast_logic(origin_curr, dim_curr,
+                                                vox_size_curr, false);
+
+  // Fill Stop Grid: Mark ANY point (drone or static) as a hit (100)
   for (int i = 0; i < dim_curr[0]; i++) {
     for (int j = 0; j < dim_curr[1]; j++) {
       for (int k = 0; k < dim_curr[2]; k++) {
         Eigen::Vector3i c(i, j, k);
-        if (vg_accum.GetVoxelInt(c) - vg_drone.GetVoxelInt(c) >=
-            min_points_per_voxel_)
-          vg_obstacles.SetVoxelInt(c, 100);
+        // Optimization: Check accum directly. If there are points, it's a stop.
+        // This ensures the raycaster stops at drones, preserving the unknown
+        // shadow behind them.
+        if (vg_accum.GetVoxelInt(c) > 0) {
+          vg_raycast_logic.SetVoxelInt(c, 100);
+        } else {
+          vg_raycast_logic.SetVoxelInt(c, -1);
+        }
       }
     }
   }
-  auto t_end_obs = std::chrono::high_resolution_clock::now();
-  obstacle_map_comp_time_.push_back(
-      std::chrono::duration<double, std::milli>(t_end_obs - t_start_obs)
-          .count());
+
+  auto t_end_ray_setup = std::chrono::high_resolution_clock::now();
+  obstacle_map_comp_time_.push_back(std::chrono::duration<double, std::milli>(
+                                        t_end_ray_setup - t_start_ray_setup)
+                                        .count());
 
   // ==================== TIMED SECTION: Camera Pose Updates
   // ====================
@@ -533,13 +548,67 @@ void MapBuilder::PointCloudCallback(
       std::chrono::duration<double, std::milli>(t_end_cam - t_start_cam)
           .count());
 
-  // ==================== TIMED SECTION: Raycast & Processing
-  // ====================
+  // ==================== TIMED SECTION: Raycast ====================
   auto t_start_ray = std::chrono::high_resolution_clock::now();
-  RaycastAndClearVision(vg_obstacles, voxel_grid_curr_.GetCoordLocal(pos_curr));
+
+  // This function now modifies vg_raycast_logic:
+  // It turns -1s into 0s along the ray path.
+  // It leaves 100s as 100s (stops).
+  RaycastAndClearVision(vg_raycast_logic,
+                        voxel_grid_curr_.GetCoordLocal(pos_curr));
+
   auto t_end_ray = std::chrono::high_resolution_clock::now();
   raycast_comp_time_.push_back(
       std::chrono::duration<double, std::milli>(t_end_ray - t_start_ray)
+          .count());
+
+  // ==================== TIMED SECTION: Map Update (The "Merge")
+  // ==================== This loop integrates the raycast results into the
+  // persistent map. It replaces the old filtering logic by checking counts only
+  // when necessary.
+  auto t_start_merge = std::chrono::high_resolution_clock::now();
+
+  for (int i = 0; i < dim_curr[0]; i++) {
+    for (int j = 0; j < dim_curr[1]; j++) {
+      for (int k = 0; k < dim_curr[2]; k++) {
+        Eigen::Vector3i coord(i, j, k);
+        int ray_status = vg_raycast_logic.GetVoxelInt(coord);
+
+        // 1. OPTIMIZATION: If Ray Status is Unknown (-1), SKIP.
+        // This means the voxel was behind a wall or a drone. We change nothing.
+        if (ray_status == -1)
+          continue;
+
+        int curr_val = voxel_grid_curr_.GetVoxelInt(coord);
+
+        // 2. OCCUPIED CASE: The ray hit something here (100).
+        if (ray_status == 100) {
+          // NOW we check: Is it a wall or a drone?
+          int static_points =
+              vg_accum.GetVoxelInt(coord) - vg_drone.GetVoxelInt(coord);
+
+          if (static_points >= min_points_per_voxel_) {
+            // It's a real wall -> Increment Occupancy
+            voxel_grid_curr_.SetVoxelInt(
+                coord, std::min(voxel_max_val_, curr_val + 1));
+          }
+          // If static_points < min, it was a drone.
+          // We do NOTHING (treat as unknown), preserving the map's existing
+          // state.
+        }
+        // 3. FREE CASE: The ray cleared this voxel.
+        else if (ray_status == 0) {
+          // Mark as Free
+          voxel_grid_curr_.SetVoxelInt(coord,
+                                       std::max(voxel_min_val_, curr_val - 1));
+        }
+      }
+    }
+  }
+
+  auto t_end_merge = std::chrono::high_resolution_clock::now();
+  merge_comp_time_.push_back(
+      std::chrono::duration<double, std::milli>(t_end_merge - t_start_merge)
           .count());
 
   auto t_start_thresh = std::chrono::high_resolution_clock::now();
@@ -773,18 +842,22 @@ void MapBuilder::EnvironmentVoxelGridCallback(
 
 // Vision Raycaster - clears visible voxels in vg_obstacles, then updates
 // vg_curr_
+// Vision Raycaster - marks cleared voxels as 0 in vg_raycast_logic
+// Note: This function no longer updates voxel_grid_curr_; that logic is moved
+// to PointCloudCallback
 void MapBuilder::RaycastAndClearVision(
-    ::voxel_grid_util::VoxelGrid &vg_obstacles,
+    ::voxel_grid_util::VoxelGrid &vg_raycast_logic,
     const ::Eigen::Vector3d &start) {
-  ::Eigen::Vector3i dim = vg_obstacles.GetDim();
+  ::Eigen::Vector3i dim = vg_raycast_logic.GetDim();
 
-  // Cast rays to border voxels - this marks cleared voxels as 0 in vg_obstacles
+  // Cast rays to border voxels - this marks cleared voxels as 0 in
+  // vg_raycast_logic
   ::std::vector<int> k_vec = {0, dim(2) - 1};
   for (int i = 0; i < dim(0); i++) {
     for (int j = 0; j < dim(1); j++) {
       for (int k : k_vec) {
         ::Eigen::Vector3d end(i + 0.5, j + 0.5, k + 0.5);
-        ClearLineVision(vg_obstacles, start, end);
+        ClearLineVision(vg_raycast_logic, start, end);
       }
     }
   }
@@ -793,7 +866,7 @@ void MapBuilder::RaycastAndClearVision(
     for (int k = 0; k < dim(2); k++) {
       for (int j : j_vec) {
         ::Eigen::Vector3d end(i + 0.5, j + 0.5, k + 0.5);
-        ClearLineVision(vg_obstacles, start, end);
+        ClearLineVision(vg_raycast_logic, start, end);
       }
     }
   }
@@ -802,32 +875,7 @@ void MapBuilder::RaycastAndClearVision(
     for (int k = 0; k < dim(2); k++) {
       for (int i : i_vec) {
         ::Eigen::Vector3d end(i + 0.5, j + 0.5, k + 0.5);
-        ClearLineVision(vg_obstacles, start, end);
-      }
-    }
-  }
-
-  // After all rays processed, update vg_curr_ based on vg_obstacles values:
-  // - 100 (occupied) → increment vg_curr_ by +1
-  // - 0 (free/cleared) → decrement vg_curr_ by -1
-  // - -1 (unknown/not seen) → no change
-  for (int i = 0; i < dim[0]; i++) {
-    for (int j = 0; j < dim[1]; j++) {
-      for (int k = 0; k < dim[2]; k++) {
-        Eigen::Vector3i coord(i, j, k);
-        int obs_val = vg_obstacles.GetVoxelInt(coord);
-        int curr_val = voxel_grid_curr_.GetVoxelInt(coord);
-
-        if (obs_val == 100) {
-          // Occupied - increment
-          voxel_grid_curr_.SetVoxelInt(coord,
-                                       std::min(voxel_max_val_, curr_val + 1));
-        } else if (obs_val == 0) {
-          // Free/cleared - decrement
-          voxel_grid_curr_.SetVoxelInt(coord,
-                                       std::max(voxel_min_val_, curr_val - 1));
-        }
-        // obs_val == -1 (unknown) → no change to vg_curr_
+        ClearLineVision(vg_raycast_logic, start, end);
       }
     }
   }
