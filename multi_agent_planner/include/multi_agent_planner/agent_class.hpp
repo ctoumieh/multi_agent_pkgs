@@ -41,6 +41,7 @@
 #include "swarmnxt_msgs/srv/get_planes.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 #include "voxel_grid.hpp"
+#include "std_msgs/msg/string.hpp"
 
 namespace multi_agent_planner {
 class Agent : public ::rclcpp::Node {
@@ -302,6 +303,8 @@ private:
   // publisher to publish unknown voxels
   ::rclcpp::Publisher<::sensor_msgs::msg::PointCloud2>::SharedPtr
       voxel_grid_unk_pub_;
+  // publisher to indicate node is running
+  ::rclcpp::Publisher<::std_msgs::msg::String>::SharedPtr health_pub_;
   // subscriber vector to get the trajectories of other agents
   ::std::vector<::rclcpp::Subscription<
       ::multi_agent_planner_msgs::msg::Trajectory>::SharedPtr>

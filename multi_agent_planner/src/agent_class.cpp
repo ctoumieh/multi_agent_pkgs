@@ -79,6 +79,9 @@ Agent::Agent()
   // create subscriber vector to other agents
   CreateTrajectorySubsriberVector();
 
+  // create publisher for health
+  health_pub_ = create_publisher<::std_msgs::msg::String>("/drone_health", 10);
+
   // initialize voxel grid publishers
   voxel_grid_occ_pub_ = create_publisher<::sensor_msgs::msg::PointCloud2>(
       topic_name + "/voxel_grid_occ", 10);
@@ -2683,6 +2686,11 @@ void Agent::GetVoxelGridAsync() {
 
 void Agent::MappingUtilVoxelGridCallback(
     const ::env_builder_msgs::msg::VoxelGridStamped::SharedPtr vg_msg) {
+
+  ::std_msgs::msg::String hb;
+  hb.data = "Planner";
+  health_pub_->publish(hb);
+
   ::env_builder_msgs::msg::VoxelGridStamped voxel_grid_stamped = *vg_msg;
   voxel_grid_mtx_.lock();
   voxel_grid_ =

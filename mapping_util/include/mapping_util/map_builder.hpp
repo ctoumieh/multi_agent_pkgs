@@ -26,6 +26,7 @@
 #include <string>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <vector>
+#include "std_msgs/msg/string.hpp"
 
 // Include the service for real vision
 #include "depth_estimation_ros2/msg/camera_info.hpp"
@@ -122,6 +123,7 @@ private:
   ::rclcpp::Subscription<::tf2_msgs::msg::TFMessage>::SharedPtr tf_subscriber_;
   ::rclcpp::Publisher<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr
       voxel_grid_pub_;
+  ::rclcpp::Publisher<::std_msgs::msg::String>::SharedPtr health_pub_;
   ::rclcpp::Publisher<::visualization_msgs::msg::MarkerArray>::SharedPtr
       frustum_pub_;
 

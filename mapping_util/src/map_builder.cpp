@@ -124,6 +124,7 @@ MapBuilder::MapBuilder() : ::rclcpp::Node("map_builder") {
   ::std::string vg_pub_topic = "agent_" + std::to_string(id_) + "/voxel_grid";
   voxel_grid_pub_ = create_publisher<::env_builder_msgs::msg::VoxelGridStamped>(
       vg_pub_topic, 10);
+  health_pub_ = create_publisher<std_msgs::msg::String>("/drone_health", 10);
 
   ::std::string frustum_pub_topic = "agent_" + std::to_string(id_) + "/fov";
   frustum_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -252,6 +253,11 @@ void MapBuilder::InitializeRosParameters() {
 // -------------------------------------------------------------------------
 void MapBuilder::PointCloudCallback(
     const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+
+  ::std_msgs::msg::String hb;
+  hb.data = "Mapping";
+  health_pub_->publish(hb);
+
   if (!first_transform_received_)
     return;
 
