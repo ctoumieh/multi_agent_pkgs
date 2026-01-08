@@ -94,7 +94,7 @@ def launch_nodes(context, *args, **kwargs):
                 {'pointcloud_topic': pointcloud_topic},
                 {'agent_frame': agent_frame},
                 {'swarm_frames': swarm_frames},
-                {'filter_radius': 0.2},
+                {'filter_radius': 0.35},
                 {'save_stats': save_stats}
             ],
             # prefix=['xterm -fa default -fs 10 -xrm "XTerm*selectToClipboard: true" -e gdb -ex run --args'],
