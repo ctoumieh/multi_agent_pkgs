@@ -202,8 +202,9 @@ void MapBuilder::DeclareRosParameters() {
   declare_parameter("use_vision", false);
   declare_parameter("save_stats", false); // Default to false
   declare_parameter("swarm_frames", std::vector<std::string>());
-  declare_parameter("filter_radius", 0.6);
-  declare_parameter("drone_depth_margin", 0.5);
+  declare_parameter("filter_radius", 0.45);
+  declare_parameter("drone_depth_min", 0.4);
+  declare_parameter("drone_depth_max", 1.2);
 }
 
 void MapBuilder::InitializeRosParameters() {
@@ -241,7 +242,8 @@ void MapBuilder::InitializeRosParameters() {
   save_stats_ = get_parameter("save_stats").as_bool();
   swarm_frames_ = get_parameter("swarm_frames").as_string_array();
   filter_radius_ = get_parameter("filter_radius").as_double();
-  drone_depth_margin_ = get_parameter("drone_depth_margin").as_double();
+  drone_depth_min_ = get_parameter("drone_depth_min").as_double();
+  drone_depth_max_ = get_parameter("drone_depth_max").as_double();
 
   swarm_frames_.erase(
       std::remove(swarm_frames_.begin(), swarm_frames_.end(), agent_frame_),
@@ -413,8 +415,8 @@ void MapBuilder::PointCloudCallback(
           f.d_cam_y = static_cast<float>(d_cam.y());
           f.d_cam_z = static_cast<float>(d_cam.z());
           f.side = s;
-          f.z_min = f.d_cam_z - static_cast<float>(drone_depth_margin_);
-          f.z_max = f.d_cam_z + static_cast<float>(drone_depth_margin_);
+          f.z_min = f.d_cam_z - static_cast<float>(drone_depth_min_);
+          f.z_max = f.d_cam_z + static_cast<float>(drone_depth_max_);
           drone_filters.push_back(f);
         }
       }

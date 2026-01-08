@@ -110,7 +110,7 @@ private:
   bool save_stats_; // Flag to enable saving
   std::vector<std::string> swarm_frames_;
   double filter_radius_;
-  double drone_depth_margin_;
+  double drone_depth_min_, drone_depth_max_;
 
   ::rclcpp::Subscription<::env_builder_msgs::msg::VoxelGridStamped>::SharedPtr
       voxel_grid_sub_;
