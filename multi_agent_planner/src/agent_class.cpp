@@ -13,9 +13,11 @@ Agent::Agent()
   InitializePlannerParameters();
 
   // initialize the safety planes client.
-  planes_client_ =
-      this->create_client<swarmnxt_msgs::srv::GetPlanes>("/get_planes");
-  RequestSafetyPlanes();
+  if (use_safety_planes_) {
+    planes_client_ =
+        this->create_client<swarmnxt_msgs::srv::GetPlanes>("/get_planes");
+    RequestSafetyPlanes();
+  }
 
   // intialize random variables
   gen_ = ::std::make_unique<std::mt19937>(id_);
@@ -559,6 +561,25 @@ bool Agent::GetPath(::std::vector<double> &start_arg,
     RCLCPP_INFO(get_logger(), "map_util time: %.3fs",
                 (double)(clock() - t_start) / CLOCKS_PER_SEC * 1e3);
   }
+
+  // === DEBUG: Voxel grid state ===
+  Eigen::Vector3i dim = vg_util.GetDim();
+  Eigen::Vector3d origin = vg_util.GetOrigin();
+  int n_free = 0, n_occ = 0, n_unk = 0;
+  auto &data = vg_util.GetData();
+  for (auto v : data) {
+    if (v == 0)
+      n_free++;
+    else if (v == -1)
+      n_unk++;
+    else
+      n_occ++;
+  }
+  RCLCPP_WARN(
+      this->get_logger(),
+      "VG debug: dim=[%d,%d,%d] origin=[%.1f,%.1f,%.1f] free=%d occ=%d unk=%d",
+      dim[0], dim[1], dim[2], origin[0], origin[1], origin[2], n_free, n_occ,
+      n_unk);
 
   // jps planner
   t_start = clock();
@@ -2564,6 +2585,7 @@ void Agent::DeclareRosParameters() {
   declare_parameter("path_planning_period", 0.1);
   declare_parameter("remove_corners", false);
   declare_parameter("planning_active", false);
+  declare_parameter("use_safety_planes", true);
 }
 
 void Agent::InitializeRosParameters() {
@@ -2626,6 +2648,7 @@ void Agent::InitializeRosParameters() {
   path_planning_period_ = get_parameter("path_planning_period").as_double();
   remove_corners_ = get_parameter("remove_corners").as_bool();
   planning_active_ = get_parameter("planning_active").as_bool();
+  use_safety_planes_ = get_parameter("use_safety_planes").as_bool();
 }
 
 void Agent::VoxelGridResponseCallback(

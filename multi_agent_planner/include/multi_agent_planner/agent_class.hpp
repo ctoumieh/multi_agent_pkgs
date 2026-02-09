@@ -37,11 +37,11 @@
 #include "multi_agent_planner_msgs/msg/trajectory.hpp"
 #include "path_tools.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "swarmnxt_msgs/msg/plane.hpp"
 #include "swarmnxt_msgs/srv/get_planes.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 #include "voxel_grid.hpp"
-#include "std_msgs/msg/string.hpp"
 
 namespace multi_agent_planner {
 class Agent : public ::rclcpp::Node {
@@ -428,6 +428,9 @@ private:
   // you want the initial state to be the one in the launch file and to start
   // planning immediately
   bool planning_active_;
+  // use separation planes from the safety node (enable for real drones, disable
+  // for simulation)
+  bool use_safety_planes_;
 
   /* yaw control variables */
   // current yaw angle

@@ -31,23 +31,37 @@ At the end of this documentation you can find:
 
 ## Getting Started
 ### Install gurobi
-Download gurobi 10.0.* from this [link](https://www.gurobi.com/downloads/gurobi-software/). Follow the installation instructions in this [link](https://support.gurobi.com/hc/en-us/articles/4534161999889-How-do-I-install-Gurobi-Optimizer-). Finally, install the license by going to this [link](https://portal.gurobi.com/), creating a license and installing it (instructions on how to install it are shown when you create it).
+Download gurobi 13.0.1 from this [link](https://www.gurobi.com/downloads/gurobi-software/). Follow the installation instructions in this [link](https://support.gurobi.com/hc/en-us/articles/4534161999889-How-do-I-install-Gurobi-Optimizer-). Finally, install the license by going to this [link](https://portal.gurobi.com/), creating a license and installing it (instructions on how to install it are shown when you create it).
 
 Then, build gurobi and copy the library:
 ``` shell script
-cd /opt/gurobi1002/linux64/src/build  #Note that the name of the folder gurobi1002 changes according to the Gurobi version
+cd /opt/gurobi1301/linux64/src/build  #Note that the name of the folder gurobi1301 changes according to the Gurobi version
 sudo make
 sudo cp libgurobi_c++.a ../../lib/
 ```
 
-### Create and build workspace
+### Install dependencies
 First install `setup_tools`:
 ``` shell script
 pip install setuptools==65.5.1
 ```
-Create a ROS2 workspace and clone the repo inside the `src` folder of the workspace (or simply clone it inside an existing workspace), then build it: 
+
+Clone and build `cv_bridge`, `depth_estimation_ros2`, `px4_msgs`, `swarmnxt_msgs`:
+
 ``` shell script
 mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws/src
+git clone https://github.com/ros-perception/vision_opencv
+git clone https://github.com/lis-epfl/depth_estimation_ros2
+git clone --recurse-submodules https://github.com/lis-epfl/swarm-nxt/tree/main/ros_packages
+cd ../
+colcon build --symlink-install --packages-select cv_bridge depth_estimation_ros2 px4_msgs swarmnxt_msgs
+```
+
+
+### Create and build workspace
+Create a ROS2 workspace and clone the repo inside the `src` folder of the workspace (or simply clone it inside an existing workspace), then build it: 
+``` shell script
 cd ~/ros2_ws/src
 git clone https://github.com/lis-epfl/multi_agent_pkgs
 cd ..

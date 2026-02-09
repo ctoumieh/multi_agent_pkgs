@@ -182,7 +182,7 @@ void MapBuilder::DeclareRosParameters() {
   declare_parameter("voxel_grid_range", ::std::vector<double>(3, 10.0));
   declare_parameter("voxel_size", 0.3);
   declare_parameter("world_frame", "world");
-  declare_parameter("agent_frame", "agent_0");
+  declare_parameter("agent_frame", "");
   declare_parameter("free_grid", true);
   declare_parameter("min_points_per_voxel", 10);
   declare_parameter("voxel_min_val", -5);
@@ -215,11 +215,9 @@ void MapBuilder::InitializeRosParameters() {
   voxel_size_ = get_parameter("voxel_size").as_double();
   world_frame_ = get_parameter("world_frame").as_string();
 
-  std::string default_frame = "agent_" + std::to_string(id_);
-  if (has_parameter("agent_frame")) {
-    agent_frame_ = get_parameter("agent_frame").as_string();
-  } else {
-    agent_frame_ = default_frame;
+  agent_frame_ = get_parameter("agent_frame").as_string();
+  if (agent_frame_.empty()) {
+    agent_frame_ = "agent_" + std::to_string(id_);
   }
 
   free_grid_ = get_parameter("free_grid").as_bool();
