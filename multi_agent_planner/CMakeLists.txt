@@ -30,6 +30,7 @@ find_package(mapping_util REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(swarmnxt_msgs REQUIRED)
 find_package(OpenMP REQUIRED)
+find_package(px4_msgs REQUIRED)
 
 set(DEPENDENCIES
   pcl_conversions
@@ -44,6 +45,7 @@ set(DEPENDENCIES
   decomp_ros_utils
   tf2_ros
   swarmnxt_msgs
+  px4_msgs
 )
 
 set(GUROBI_LIBRARIES "$ENV{GUROBI_HOME}/lib/libgurobi_c++.a;$ENV{GUROBI_HOME}/lib/libgurobi130.so" )

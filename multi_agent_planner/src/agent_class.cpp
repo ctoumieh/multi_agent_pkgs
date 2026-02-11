@@ -135,6 +135,26 @@ Agent::Agent()
           ::std::bind(&Agent::StopPlanningCallback, this,
                       ::std::placeholders::_1));
 
+  // create state subscriber
+  state_actual_predicted_.resize(n_x_, 0.0);
+  vlp_position_.resize(3, 0.0);
+  vlp_velocity_.resize(3, 0.0);
+  vlp_timestamp_us_ = 0;
+
+  if (use_state_estimate_) {
+    auto qos = rclcpp::QoS(10).best_effort();
+    vlp_sub_ = this->create_subscription<px4_msgs::msg::VehicleLocalPosition>(
+        "/fmu/out/vehicle_local_position", qos,
+        std::bind(&Agent::VehicleLocalPositionCallback, this,
+                  std::placeholders::_1));
+    RCLCPP_INFO(
+        this->get_logger(),
+        "Subscribed to /fmu/out/vehicle_local_position for state correction");
+  }
+
+  // seed random noise generator for the contoller inaccuracy simulator
+  rng_.seed(std::random_device{}());
+
   // launch path planning thread
   path_planning_thread_ = ::std::thread(&Agent::UpdatePath, this);
 
@@ -512,6 +532,20 @@ void Agent::UpdatePath() {
   }
 }
 
+void Agent::VehicleLocalPositionCallback(
+    const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
+  vlp_timestamp_us_ = msg->timestamp;
+
+  // NED → ENU
+  vlp_position_[0] = msg->x;
+  vlp_position_[1] = -msg->y;
+  vlp_position_[2] = -msg->z;
+
+  vlp_velocity_[0] = msg->vx;
+  vlp_velocity_[1] = -msg->vy;
+  vlp_velocity_[2] = -msg->vz;
+}
+
 bool Agent::GetPathNew(::std::vector<double> &start_arg,
                        ::std::vector<double> &goal_arg,
                        ::voxel_grid_util::VoxelGrid &voxel_grid,
@@ -561,25 +595,6 @@ bool Agent::GetPath(::std::vector<double> &start_arg,
     RCLCPP_INFO(get_logger(), "map_util time: %.3fs",
                 (double)(clock() - t_start) / CLOCKS_PER_SEC * 1e3);
   }
-
-  // === DEBUG: Voxel grid state ===
-  Eigen::Vector3i dim = vg_util.GetDim();
-  Eigen::Vector3d origin = vg_util.GetOrigin();
-  int n_free = 0, n_occ = 0, n_unk = 0;
-  auto &data = vg_util.GetData();
-  for (auto v : data) {
-    if (v == 0)
-      n_free++;
-    else if (v == -1)
-      n_unk++;
-    else
-      n_occ++;
-  }
-  RCLCPP_WARN(
-      this->get_logger(),
-      "VG debug: dim=[%d,%d,%d] origin=[%.1f,%.1f,%.1f] free=%d occ=%d unk=%d",
-      dim[0], dim[1], dim[2], origin[0], origin[1], origin[2], n_free, n_occ,
-      n_unk);
 
   // jps planner
   t_start = clock();
@@ -1110,8 +1125,55 @@ void Agent::SolveOptimizationProblem() {
     }
   }
 
-  // set the first discrete point to the current state
-  for (int i = 0; i < n_x_; i++) {
+  // add interpolation variable to push first state towards actual state
+  obj_i += -r_alpha_ * alpha_grb_;
+
+  // Remove previous start constraints
+  for (auto &c : start_constr_grb_) {
+    model_.remove(c);
+  }
+  start_constr_grb_.clear();
+
+  // Compute state_actual_predicted_
+  if (use_state_estimate_ && vlp_timestamp_us_ > 0) {
+    double t_measurement = static_cast<double>(vlp_timestamp_us_) * 1e-6;
+    double t_now = this->now().seconds();
+    double msg_age = t_now - t_measurement;
+    double dt_predict = dt_ * step_plan_ + msg_age;
+
+    for (int i = 0; i < 3; i++) {
+      state_actual_predicted_[i] =
+          vlp_position_[i] + vlp_velocity_[i] * dt_predict;
+    }
+    for (int i = 0; i < 3; i++) {
+      state_actual_predicted_[i + 3] = vlp_velocity_[i];
+    }
+    for (int i = 6; i < n_x_; i++) {
+      state_actual_predicted_[i] = state_curr_[i];
+    }
+  } else {
+    state_actual_predicted_ = state_curr_;
+    if (sim_position_noise_std_ > 0.0) {
+      std::normal_distribution<double> dist(0.0, sim_position_noise_std_);
+      for (int i = 0; i < 3; i++) {
+        state_actual_predicted_[i] += dist(rng_);
+      }
+    }
+  }
+
+  // Constrain start position via alpha interpolation
+  for (int i = 0; i < 3; i++) {
+    x_grb_[0][i].set(GRB_DoubleAttr_LB, x_lb_[i]);
+    x_grb_[0][i].set(GRB_DoubleAttr_UB, x_ub_[i]);
+
+    double delta = state_actual_predicted_[i] - state_curr_[i];
+    start_constr_grb_.push_back(
+        model_.addConstr(x_grb_[0][i] - delta * alpha_grb_ == state_curr_[i],
+                         "start_pos_" + std::to_string(i)));
+  }
+
+  // Fix velocity and acceleration to planned values
+  for (int i = 3; i < n_x_; i++) {
     x_grb_[0][i].set(GRB_DoubleAttr_LB, state_curr_[i]);
     x_grb_[0][i].set(GRB_DoubleAttr_UB, state_curr_[i]);
   }
@@ -2426,6 +2488,9 @@ void Agent::CreateGurobiModel() {
     tmp_vars.clear();
   }
 
+  // add alpha to constrain first state between predicted and actual
+  alpha_grb_ = model_.addVar(0.0, 1.0, 0.0, GRB_CONTINUOUS, "alpha");
+
   // add dyn constraints
   GRBLinExpr x_expr[n_x_];
   for (int i = 0; i < n_hor_; i++) {
@@ -2586,6 +2651,9 @@ void Agent::DeclareRosParameters() {
   declare_parameter("remove_corners", false);
   declare_parameter("planning_active", false);
   declare_parameter("use_safety_planes", true);
+  declare_parameter("use_state_estimate", false);
+  declare_parameter("r_alpha", 1000.0);
+  declare_parameter("sim_position_noise_std", 0.0);
 }
 
 void Agent::InitializeRosParameters() {
@@ -2649,6 +2717,9 @@ void Agent::InitializeRosParameters() {
   remove_corners_ = get_parameter("remove_corners").as_bool();
   planning_active_ = get_parameter("planning_active").as_bool();
   use_safety_planes_ = get_parameter("use_safety_planes").as_bool();
+  use_state_estimate_ = get_parameter("use_state_estimate").as_bool();
+  r_alpha_ = get_parameter("r_alpha").as_double();
+  sim_position_noise_std_ = get_parameter("sim_position_noise_std").as_double();
 }
 
 void Agent::VoxelGridResponseCallback(

@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <random>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -16,6 +17,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <mutex>
 #include <nav_msgs/msg/path.hpp>
+#include <px4_msgs/msg/vehicle_local_position.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -238,6 +240,10 @@ private:
   void MappingUtilVoxelGridCallback(
       const ::env_builder_msgs::msg::VoxelGridStamped::SharedPtr vg_msg);
 
+  // callback storing position/velocity in for state correction
+  void VehicleLocalPositionCallback(
+      const ::px4_msgs::msg::VehicleLocalPosition::SharedPtr msg);
+
   // current goal subscriber callback
   void
   GoalCallback(const ::geometry_msgs::msg::PointStamped::SharedPtr goal_msg);
@@ -317,6 +323,8 @@ private:
   // subscriber to get the most recent goal
   ::rclcpp::Subscription<::geometry_msgs::msg::PointStamped>::SharedPtr
       goal_sub_;
+  // local position subscriber (only created when use_state_estimate_ is true)
+  rclcpp::Subscription<px4_msgs::msg::VehicleLocalPosition>::SharedPtr vlp_sub_;
 
   ::rclcpp::Subscription<::multi_agent_planner_msgs::msg::StartPlanning>::
       SharedPtr start_planning_sub_;
@@ -431,6 +439,15 @@ private:
   // use separation planes from the safety node (enable for real drones, disable
   // for simulation)
   bool use_safety_planes_;
+  // subscribe to PX4 state estimate for tracking error correction
+  bool use_state_estimate_;
+  // predicted actual state at next planning instant (size n_x_)
+  std::vector<double> state_actual_predicted_;
+  // simulated tracking uncertainty std dev (meters) for testing alpha in
+  // simulation
+  double sim_position_noise_std_;
+  // random number generator for simulated tracking noise
+  std::mt19937 rng_;
 
   /* yaw control variables */
   // current yaw angle
@@ -486,6 +503,20 @@ private:
   ::std::vector<double> x_lb_;
   // upper bound on the states
   ::std::vector<double> x_ub_;
+  // interpolation variable [0,1] between planned (0) and actual (1) start state
+  GRBVar alpha_grb_;
+  // objective weight for maximizing alpha
+  double r_alpha_;
+  // removable constraints linking x_grb_[0] to alpha, re-added each iteration
+  std::vector<GRBConstr> start_constr_grb_;
+
+  /* odometry measurement variables */
+  // PX4 measurement timestamp in microseconds (system time via SYNCT)
+  uint64_t vlp_timestamp_us_;
+  // latest PX4 position
+  std::vector<double> vlp_position_;
+  // latest PX4 velocity
+  std::vector<double> vlp_velocity_;
 
   /* trajectory planning variable */
   // initial state of drone; for now fixed as a config but it should be taken

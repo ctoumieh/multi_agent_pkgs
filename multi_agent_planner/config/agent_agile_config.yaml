@@ -11,7 +11,7 @@
     id: 0 # id of the planning agent
     n_x: 9 # number of state variables (9 for jerk control, 6 for acceleration control
     n_u: 3 # number of control variables (3 for jerk/acceleration control)
-    n_hor: 9 # number of mpc steps
+    n_hor: 12 # number of mpc steps
     dt: 0.1 # step time of the mpc
     path_vel_min: 4.5 # minimum discretization velocity of the path
     path_vel_max: 9.0 # maximum discretization velocity of the path
@@ -54,3 +54,6 @@
     remove_corners: false # if true, allow diagonal motion close to obstacles
     planning_active: true # if true, immediately start planning 
     use_safety_planes: false # if true, get safety planes from safety node
+    use_state_estimate: false # if true, get safety planes from safety node
+    r_alpha: 100.0 # push the initial state of the optimization towards the actual state using this weight in the optimization
+    sim_position_noise_std: 0.0 # standard deviation of the gaussian to simulate the controller error
