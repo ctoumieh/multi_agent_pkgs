@@ -2437,7 +2437,7 @@ void Agent::SaveAndDisplayCommunicationLatency() {
 }
 
 GRBModel Agent::InitializeGurobi(GRBEnv &env) {
-  if (gurobi_verbose_) {
+  if (!gurobi_verbose_) {
     env.set(GRB_IntParam_OutputFlag, 0);
   }
   env.start();
@@ -2652,7 +2652,7 @@ void Agent::DeclareRosParameters() {
   declare_parameter("planning_active", false);
   declare_parameter("use_safety_planes", true);
   declare_parameter("use_state_estimate", false);
-  declare_parameter("r_alpha", 1000.0);
+  declare_parameter("r_alpha", 100.0);
   declare_parameter("sim_position_noise_std", 0.0);
 }
 
