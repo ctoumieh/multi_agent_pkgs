@@ -536,7 +536,7 @@ void Agent::VehicleLocalPositionCallback(
     const px4_msgs::msg::VehicleLocalPosition::SharedPtr msg) {
   vlp_timestamp_us_ = msg->timestamp;
 
-  // NED → ENU
+  // FRD → FLU
   vlp_position_[0] = msg->x;
   vlp_position_[1] = -msg->y;
   vlp_position_[2] = -msg->z;
@@ -1126,7 +1126,8 @@ void Agent::SolveOptimizationProblem() {
   }
 
   // add interpolation variable to push first state towards actual state
-  obj_i += -r_alpha_ * alpha_grb_;
+  obj_i += -r_alpha_ * alpha_pos_grb_;
+  obj_i += -r_alpha_ * alpha_vel_grb_;
 
   // Remove previous start constraints
   for (auto &c : start_constr_grb_) {
@@ -1155,7 +1156,7 @@ void Agent::SolveOptimizationProblem() {
     state_actual_predicted_ = state_curr_;
     if (sim_position_noise_std_ > 0.0) {
       std::normal_distribution<double> dist(0.0, sim_position_noise_std_);
-      for (int i = 0; i < 3; i++) {
+      for (int i = 0; i < 6; i++) {
         state_actual_predicted_[i] += dist(rng_);
       }
     }
@@ -1167,13 +1168,25 @@ void Agent::SolveOptimizationProblem() {
     x_grb_[0][i].set(GRB_DoubleAttr_UB, x_ub_[i]);
 
     double delta = state_actual_predicted_[i] - state_curr_[i];
-    start_constr_grb_.push_back(
-        model_.addConstr(x_grb_[0][i] - delta * alpha_grb_ == state_curr_[i],
-                         "start_pos_" + std::to_string(i)));
+    start_constr_grb_.push_back(model_.addConstr(
+        x_grb_[0][i] - delta * alpha_pos_grb_ == state_curr_[i],
+        "start_pos_" + std::to_string(i)));
   }
 
-  // Fix velocity and acceleration to planned values
-  for (int i = 3; i < n_x_; i++) {
+  // Constrain start velocity via alpha interpolation
+  for (int i = 3; i < 6; i++) {
+    x_grb_[0][i].set(GRB_DoubleAttr_LB, -GRB_INFINITY);
+    x_grb_[0][i].set(GRB_DoubleAttr_UB, GRB_INFINITY);
+
+    double delta_vel = state_actual_predicted_[i] - state_curr_[i];
+
+    start_constr_grb_.push_back(model_.addConstr(
+        x_grb_[0][i] - delta_vel * alpha_vel_grb_ == state_curr_[i],
+        "start_vel_" + std::to_string(i)));
+  }
+
+  // Fix acceleration to planned values
+  for (int i = 6; i < n_x_; i++) {
     x_grb_[0][i].set(GRB_DoubleAttr_LB, state_curr_[i]);
     x_grb_[0][i].set(GRB_DoubleAttr_UB, state_curr_[i]);
   }
@@ -2489,7 +2502,8 @@ void Agent::CreateGurobiModel() {
   }
 
   // add alpha to constrain first state between predicted and actual
-  alpha_grb_ = model_.addVar(0.0, 1.0, 0.0, GRB_CONTINUOUS, "alpha");
+  alpha_pos_grb_ = model_.addVar(0.0, 1.0, 0.0, GRB_CONTINUOUS, "alpha_pos");
+  alpha_vel_grb_ = model_.addVar(0.0, 1.0, 0.0, GRB_CONTINUOUS, "alpha_vel");
 
   // add dyn constraints
   GRBLinExpr x_expr[n_x_];

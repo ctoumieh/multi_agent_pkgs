@@ -504,7 +504,8 @@ private:
   // upper bound on the states
   ::std::vector<double> x_ub_;
   // interpolation variable [0,1] between planned (0) and actual (1) start state
-  GRBVar alpha_grb_;
+  GRBVar alpha_pos_grb_;
+  GRBVar alpha_vel_grb_;
   // objective weight for maximizing alpha
   double r_alpha_;
   // removable constraints linking x_grb_[0] to alpha, re-added each iteration
