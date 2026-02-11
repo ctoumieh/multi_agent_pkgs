@@ -1154,8 +1154,8 @@ void Agent::SolveOptimizationProblem() {
     }
   } else {
     state_actual_predicted_ = state_curr_;
-    if (sim_position_noise_std_ > 0.0) {
-      std::normal_distribution<double> dist(0.0, sim_position_noise_std_);
+    if (sim_noise_std_ > 0.0) {
+      std::normal_distribution<double> dist(0.0, sim_noise_std_);
       for (int i = 0; i < 6; i++) {
         state_actual_predicted_[i] += dist(rng_);
       }
@@ -2666,8 +2666,8 @@ void Agent::DeclareRosParameters() {
   declare_parameter("planning_active", false);
   declare_parameter("use_safety_planes", true);
   declare_parameter("use_state_estimate", false);
-  declare_parameter("r_alpha", 100.0);
-  declare_parameter("sim_position_noise_std", 0.0);
+  declare_parameter("r_alpha", 1000.0);
+  declare_parameter("sim_noise_std", 0.0);
 }
 
 void Agent::InitializeRosParameters() {
@@ -2733,7 +2733,7 @@ void Agent::InitializeRosParameters() {
   use_safety_planes_ = get_parameter("use_safety_planes").as_bool();
   use_state_estimate_ = get_parameter("use_state_estimate").as_bool();
   r_alpha_ = get_parameter("r_alpha").as_double();
-  sim_position_noise_std_ = get_parameter("sim_position_noise_std").as_double();
+  sim_noise_std_ = get_parameter("sim_noise_std").as_double();
 }
 
 void Agent::VoxelGridResponseCallback(

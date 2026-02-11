@@ -445,7 +445,7 @@ private:
   std::vector<double> state_actual_predicted_;
   // simulated tracking uncertainty std dev (meters) for testing alpha in
   // simulation
-  double sim_position_noise_std_;
+  double sim_noise_std_;
   // random number generator for simulated tracking noise
   std::mt19937 rng_;
 

@@ -55,5 +55,5 @@
     planning_active: true # if true, immediately start planning 
     use_safety_planes: false # if true, get safety planes from safety node
     use_state_estimate: false # if true, get safety planes from safety node
-    r_alpha: 100.0 # push the initial state of the optimization towards the actual state using this weight in the optimization
-    sim_position_noise_std: 0.0 # standard deviation of the gaussian to simulate the controller error
+    r_alpha: 1000.0 # push the initial state of the optimization towards the actual state using this weight in the optimization
+    sim_noise_std: 0.0 # standard deviation of the gaussian to simulate the controller error
