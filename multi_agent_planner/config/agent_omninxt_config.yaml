@@ -53,5 +53,5 @@
     k_p_yaw: 1.0 # yawing dynamics
     remove_corners: false # if true, allow diagonal motion close to obstacles
     use_state_estimate: true # if true use the ekf output to guide the initial state of the trajectory
-    r_alpha_pos_: 1000.0
-    r_alpha_vel_: 0.0
+    r_alpha_pos_: 1000.0 # alpha weight for the position
+    r_alpha_vel_: 0.0 # alpha weight for the velocity
