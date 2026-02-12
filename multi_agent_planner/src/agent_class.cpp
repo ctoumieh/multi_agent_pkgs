@@ -1126,8 +1126,8 @@ void Agent::SolveOptimizationProblem() {
   }
 
   // add interpolation variable to push first state towards actual state
-  obj_i += -r_alpha_ * alpha_pos_grb_;
-  obj_i += -r_alpha_ * alpha_vel_grb_;
+  obj_i += -r_alpha_pos_ * alpha_pos_grb_;
+  obj_i += -r_alpha_vel_ * alpha_vel_grb_;
 
   // Remove previous start constraints
   for (auto &c : start_constr_grb_) {
@@ -2666,7 +2666,8 @@ void Agent::DeclareRosParameters() {
   declare_parameter("planning_active", false);
   declare_parameter("use_safety_planes", true);
   declare_parameter("use_state_estimate", false);
-  declare_parameter("r_alpha", 1000.0);
+  declare_parameter("r_alpha_pos", 1000.0);
+  declare_parameter("r_alpha_vel", 1000.0);
   declare_parameter("sim_noise_std", 0.0);
 }
 
@@ -2732,7 +2733,8 @@ void Agent::InitializeRosParameters() {
   planning_active_ = get_parameter("planning_active").as_bool();
   use_safety_planes_ = get_parameter("use_safety_planes").as_bool();
   use_state_estimate_ = get_parameter("use_state_estimate").as_bool();
-  r_alpha_ = get_parameter("r_alpha").as_double();
+  r_alpha_pos_ = get_parameter("r_alpha_pos").as_double();
+  r_alpha_vel_ = get_parameter("r_alpha_vel").as_double();
   sim_noise_std_ = get_parameter("sim_noise_std").as_double();
 }
 

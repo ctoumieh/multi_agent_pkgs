@@ -507,7 +507,8 @@ private:
   GRBVar alpha_pos_grb_;
   GRBVar alpha_vel_grb_;
   // objective weight for maximizing alpha
-  double r_alpha_;
+  double r_alpha_pos_;
+  double r_alpha_vel_;
   // removable constraints linking x_grb_[0] to alpha, re-added each iteration
   std::vector<GRBConstr> start_constr_grb_;
 
