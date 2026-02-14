@@ -9,7 +9,6 @@
 
 #include <chrono>
 #include <cmath>
-#include <random>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +17,7 @@
 #include <mutex>
 #include <nav_msgs/msg/path.hpp>
 #include <px4_msgs/msg/vehicle_local_position.hpp>
+#include <random>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -441,6 +441,9 @@ private:
   bool use_safety_planes_;
   // subscribe to PX4 state estimate for tracking error correction
   bool use_state_estimate_;
+  // if distance error threshold  bigger than this value, we use state estimate
+  // to initialize the new trajectory
+  double error_threshold_;
   // predicted actual state at next planning instant (size n_x_)
   std::vector<double> state_actual_predicted_;
   // simulated tracking uncertainty std dev (meters) for testing alpha in

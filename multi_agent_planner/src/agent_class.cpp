@@ -1142,15 +1142,32 @@ void Agent::SolveOptimizationProblem() {
     double msg_age = t_now - t_measurement;
     double dt_predict = dt_ * step_plan_ + msg_age;
 
+    // Compute predicted actual state from VLP
+    std::vector<double> vlp_predicted(n_x_, 0.0);
     for (int i = 0; i < 3; i++) {
-      state_actual_predicted_[i] =
-          vlp_position_[i] + vlp_velocity_[i] * dt_predict;
+      vlp_predicted[i] = vlp_position_[i] + vlp_velocity_[i] * dt_predict;
     }
     for (int i = 0; i < 3; i++) {
-      state_actual_predicted_[i + 3] = vlp_velocity_[i];
+      vlp_predicted[i + 3] = vlp_velocity_[i];
     }
     for (int i = 6; i < n_x_; i++) {
-      state_actual_predicted_[i] = state_curr_[i];
+      vlp_predicted[i] = state_curr_[i];
+    }
+
+    // Compute position error
+    double error_sq = 0.0;
+    for (int i = 0; i < 3; i++) {
+      double e = vlp_predicted[i] - state_curr_[i];
+      error_sq += e * e;
+    }
+    double error_norm = std::sqrt(error_sq);
+
+    if (error_norm > error_threshold_) {
+      // Large error → use actual state to pull trajectory back
+      state_actual_predicted_ = vlp_predicted;
+    } else {
+      // Tracking well → delta stays zero, optimizer uses predicted state
+      state_actual_predicted_ = state_curr_;
     }
   } else {
     state_actual_predicted_ = state_curr_;
@@ -2666,6 +2683,7 @@ void Agent::DeclareRosParameters() {
   declare_parameter("planning_active", false);
   declare_parameter("use_safety_planes", true);
   declare_parameter("use_state_estimate", false);
+  declare_parameter("error_threshold", 0.25);
   declare_parameter("r_alpha_pos", 1000.0);
   declare_parameter("r_alpha_vel", 1000.0);
   declare_parameter("sim_noise_std", 0.0);
@@ -2733,6 +2751,7 @@ void Agent::InitializeRosParameters() {
   planning_active_ = get_parameter("planning_active").as_bool();
   use_safety_planes_ = get_parameter("use_safety_planes").as_bool();
   use_state_estimate_ = get_parameter("use_state_estimate").as_bool();
+  error_threshold_ = get_parameter("error_threshold").as_double();
   r_alpha_pos_ = get_parameter("r_alpha_pos").as_double();
   r_alpha_vel_ = get_parameter("r_alpha_vel").as_double();
   sim_noise_std_ = get_parameter("sim_noise_std").as_double();
