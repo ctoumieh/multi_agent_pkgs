@@ -13,8 +13,8 @@
     n_u: 3 # number of control variables (3 for jerk/acceleration control)
     n_hor: 12 # number of mpc steps
     dt: 0.1 # step time of the mpc
-    path_vel_min: 3.5 # minimum discretization velocity of the path
-    path_vel_max: 3.75 # maximum discretization velocity of the path
+    path_vel_min: 4.0 # minimum discretization velocity of the path
+    path_vel_max: 4.0 # maximum discretization velocity of the path
     sens_dist: 0.05 # sensitivity of the distance when computing the path_vel in GetVoxelVelocityLimit 
     sens_pot: 0.18 # sensitivity of the potential when computing the path_vel in GetVoxelVelocityLimit 
     path_vel_dec: 0.0 # deceleration of discretization velocity of the path after every time step; stuff works better without it at 5.0 path_vel
@@ -52,6 +52,7 @@
     yaw_idx: 3 # index of the reference point that we want to look at with yaw 
     k_p_yaw: 1.0 # yawing dynamics
     remove_corners: false # if true, allow diagonal motion close to obstacles
-    use_state_estimate: false # if true use the ekf output to guide the initial state of the trajectory
+    use_state_estimate: true # if true use the ekf output to guide the initial state of the trajectory
+    error_threshold: 0.25 # if error bigger than this value, use state estimate instead of predicted estimate
     r_alpha_pos_: 1000.0 # alpha weight for the position
     r_alpha_vel_: 1000.0 # alpha weight for the velocity
