@@ -52,8 +52,9 @@ Clone and build `cv_bridge`, `depth_estimation_ros2`, `px4_msgs`, `swarmnxt_msgs
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
 git clone https://github.com/ros-perception/vision_opencv
+git checkout humble
 git clone https://github.com/lis-epfl/depth_estimation_ros2
-git clone --recurse-submodules https://github.com/lis-epfl/swarm-nxt/tree/main/ros_packages
+git clone --recurse-submodules https://github.com/lis-epfl/swarm-nxt.git
 cd ../
 colcon build --symlink-install --packages-select cv_bridge depth_estimation_ros2 px4_msgs swarmnxt_msgs
 ```
