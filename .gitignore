@@ -1,5 +1,6 @@
 # ignore temp files
 *~
+CLAUDE.md
 
 # ignore vim temp files
 *.swp

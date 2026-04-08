@@ -313,11 +313,6 @@ void VoxelGrid::CreateDynamicObstaclesPotentialField(
     Eigen::Vector3d velocity = velocity_vec[it];
     Eigen::Vector3d dimension = dimension_vec[it];
 
-    // if velocity is too low, continue to next obstacle
-    if (velocity.norm() < 0.1) {
-      continue;
-    }
-
     // first create static potential field
     // define min and max bounds
     int min_x = floor((position[0] - dimension[0] / 2) / vox_size_) - 1;
@@ -483,7 +478,7 @@ void VoxelGrid::CreateDynamicObstaclesPotentialField(
         new_pt[0] = floor(pt[0] + 0.5 + offset[0]);
         new_pt[1] = floor(pt[1] + 0.5 + offset[1]);
         new_pt[2] = floor(pt[2] + 0.5 + offset[2]);
-        if (!IsOccupied(pt) && !IsUnknown(pt)) {
+        if (!IsOccupied(new_pt) && !IsUnknown(new_pt)) {
           SetVoxelInt(new_pt, pot_value);
         }
       }
