@@ -2,7 +2,7 @@ env_builder_node:
   ros__parameters:
     origin_grid: [-5.0, -5.0, 0.0] # origin of the voxel grid
     dimension_grid: [45.0, 45.0, 20.0] # dimensions in meters
-    vox_size: 0.3 # voxel size of the grid
+    vox_size: 0.2 # voxel size of the grid
     free_grid: true # if true the grid is initialized to free instead of unknown
 
     range_obst: [30.0, 30.0, 0.0] # area on the map where to generate obstacles, always positive numbers to move it around, use the origin_obst variable
@@ -21,11 +21,11 @@ env_builder_node:
     multi_dyn_obst_position: true # if false, generate positions randomly using normal distribution, if true use position_obst_multi to define the position of each obstacle
     size_dyn_obst: [0.3, 0.3, 2.0] # height x width x length
     size_dyn_obst_vec: [0.5, 2.2, 5.0, 0.5, 2.2, 5.0] # x,y,z size of each obstacle concatenated
-    position_dyn_obst_vec: [3.75, 5.0, 1.0, 5.0, 5.0, 1.0, 6.25, 5.0, 1.0] # x,y,z position of each obstacle concatenated (grid-local = world - origin_grid)
+    position_dyn_obst_vec: [4.15, 5.0, 1.0, 5.85, 5.0, 1.0] # x,y,z position of each obstacle concatenated (grid-local = world - origin_grid)
     n_dyn_obst: 10 # 360, 315, 270, 225, 180, 135, 90, number of obstacles (only used if we want to use random generation, otherwise the number of obstacles is inferred from position_obst_vec)
-    speed: 0.1 # speed of the dynamic obstacles
+    speed: 0.17 # speed of the dynamic obstacles
     offset: [1.0, 4.0, 2.2] # offset for the trefoil motion of each obstacle
-    amplitude: [0.0, 0.66, 0.0, 0.0, 0.6, 0.0, 0.0, 0.75, 0.0] # amplitudes x,y,z for each obstacle concatenated
+    amplitude: [0.0, 0.66, 0.0, 0.0, 0.75, 0.0] # amplitudes x,y,z for each obstacle concatenated
     time_iter: 0 # time from which to start the trefoil motion
     direction: [1.0, 0.0, 0.0] # concatenation of 3d vectors that are the motion direction of the dynamic obstacles
 

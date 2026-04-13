@@ -10,7 +10,7 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     ld.add_action(DeclareLaunchArgument(
-        'n_crossings', default_value='6',
+        'n_crossings', default_value='20',
         description='Number of back-and-forth crossings'))
 
     config_planner = os.path.join(
@@ -25,7 +25,7 @@ def generate_launch_description():
     )
 
     # --- Layout parameters (change n_rob here, must be even) ---
-    n_rob = 4
+    n_rob = 2
     x_left = -2.5
     x_right = 2.5
     z_plane = 1.2
@@ -39,7 +39,7 @@ def generate_launch_description():
     voxel_size = 0.2
     potential_dist = 0.6
     n_it_decomp = 72 # 42 for 0.3 voxel size
-    potential_dist_max = 1.2
+    potential_dist_max = 1.5
     potential_speed_max = 0.2
 
     # Start positions:

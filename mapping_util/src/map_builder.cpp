@@ -824,6 +824,18 @@ void MapBuilder::EnvironmentVoxelGridCallback(
     ::env_builder_msgs::msg::VoxelGridStamped vg_final_msg_stamped;
     vg_final_msg_stamped.voxel_grid = vg_final_msg;
     vg_final_msg_stamped.voxel_grid.voxel_size = voxel_size;
+
+    // Forward dynamic obstacles in world frame for the planner's cost term
+    for (const auto &obs : vg_msg->voxel_grid.dyn_obstacles) {
+      ::env_builder_msgs::msg::Obstacle obs_world;
+      obs_world.position[0] = obs.position[0] + origin_grid[0];
+      obs_world.position[1] = obs.position[1] + origin_grid[1];
+      obs_world.position[2] = obs.position[2] + origin_grid[2];
+      obs_world.velocity = obs.velocity;
+      obs_world.dimension = obs.dimension;
+      vg_final_msg_stamped.voxel_grid.dyn_obstacles.push_back(obs_world);
+    }
+
     vg_final_msg_stamped.header.stamp = now();
     vg_final_msg_stamped.header.frame_id = world_frame_;
 

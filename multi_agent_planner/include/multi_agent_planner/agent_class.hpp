@@ -452,6 +452,11 @@ private:
   // random number generator for simulated tracking noise
   std::mt19937 rng_;
 
+  // dynamic obstacle cost parameters
+  bool dyn_obs_cost_enabled_;
+  double dyn_obs_cost_weight_;
+  double dyn_obs_cost_d_thresh_;
+
   /* yaw control variables */
   // current yaw angle
   double yaw_;
@@ -575,6 +580,8 @@ private:
   bool increment_traj_ref_ = false;
   // bool to indicate if the gurobi optimization has failed
   bool optimization_failed_;
+  // dynamic obstacles received from mapping_util/env_builder (world frame)
+  ::std::vector<::env_builder_msgs::msg::Obstacle> dyn_obstacles_curr_;
   // vector to save the polyhedra that were in the optimization; it is resized
   // to size poly_hor_ and if ith idx is true, it means we are using the ith
   // poly
@@ -596,6 +603,8 @@ private:
   ::std::mutex goal_mtx_;
   // mutex for accessing the reference trajectory
   ::std::mutex traj_ref_mtx_;
+  // mutex for dynamic obstacles
+  ::std::mutex dyn_obstacles_mtx_;
   // mutex for updating the state of the drone
   ::std::mutex state_mtx_;
   // mutex for accessing trajectories of other agents

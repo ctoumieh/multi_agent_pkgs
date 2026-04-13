@@ -56,3 +56,6 @@
     error_threshold: 0.25 # if error bigger than this value, use state estimate instead of predicted estimate
     r_alpha_pos_: 1000.0 # alpha weight for the position
     r_alpha_vel_: 1000.0 # alpha weight for the velocity
+    dyn_obs_cost_enabled: true # enable dynamic obstacle avoidance cost
+    dyn_obs_cost_weight: 200.0 # linear cost weight (effective shift = w*alpha*beta / (2*r_x))
+    dyn_obs_cost_d_thresh: 3.0 # distance threshold in meters

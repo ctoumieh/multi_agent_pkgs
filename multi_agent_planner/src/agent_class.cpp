@@ -1125,6 +1125,72 @@ void Agent::SolveOptimizationProblem() {
     }
   }
 
+  // Dynamic obstacle avoidance cost: linear bias pushing agent away from
+  // the face of the obstacle that is closest to the reference point and
+  // that the obstacle is approaching
+  if (dyn_obs_cost_enabled_) {
+    dyn_obstacles_mtx_.lock();
+    auto dyn_obstacles = dyn_obstacles_curr_;
+    dyn_obstacles_mtx_.unlock();
+
+    for (int i = 1; i <= n_hor_; i++) {
+      double ref_x = traj_ref_curr[i - 1][0];
+      double ref_y = traj_ref_curr[i - 1][1];
+      double ref_z = traj_ref_curr[i - 1][2];
+
+      for (const auto &obs : dyn_obstacles) {
+        double hx = obs.dimension[0] / 2.0;
+        double hy = obs.dimension[1] / 2.0;
+        double hz = obs.dimension[2] / 2.0;
+
+        // Closest point on box to ref (axis-aligned clamp)
+        double cx = ::std::max(obs.position[0] - hx,
+                               ::std::min(ref_x, obs.position[0] + hx));
+        double cy = ::std::max(obs.position[1] - hy,
+                               ::std::min(ref_y, obs.position[1] + hy));
+        double cz = ::std::max(obs.position[2] - hz,
+                               ::std::min(ref_z, obs.position[2] + hz));
+
+        // Vector from closest point to ref
+        double dx = ref_x - cx;
+        double dy = ref_y - cy;
+        double dz = ref_z - cz;
+        double dist = ::std::sqrt(dx * dx + dy * dy + dz * dz);
+
+        if (dist < 1e-6 || dist > dyn_obs_cost_d_thresh_) continue;
+
+        // Unit normal: closest box point toward ref
+        double nx = dx / dist;
+        double ny = dy / dist;
+        double nz = dz / dist;
+
+        double v_norm = ::std::sqrt(obs.velocity[0] * obs.velocity[0] +
+                                    obs.velocity[1] * obs.velocity[1] +
+                                    obs.velocity[2] * obs.velocity[2]);
+        if (v_norm < 1e-6) continue;
+
+        // Angle factor: positive when obstacle moves toward the closest
+        // point (v_obs opposes n)
+        double alpha = ::std::max(
+            0.0, -(nx * obs.velocity[0] + ny * obs.velocity[1] +
+                    nz * obs.velocity[2]) /
+                     v_norm);
+
+        // Distance fade: 1 at contact, 0 at d_thresh
+        double beta = 1.0 - dist / dyn_obs_cost_d_thresh_;
+
+        double coeff = dyn_obs_cost_weight_ * alpha * beta;
+        if (coeff < 1e-8) continue;
+
+        // Linear cost: rewards displacement in +n direction (away from
+        // obstacle), penalizes displacement in -n direction (toward it)
+        obj_i += -coeff * (nx * (x_grb_[i][0] - ref_x) +
+                           ny * (x_grb_[i][1] - ref_y) +
+                           nz * (x_grb_[i][2] - ref_z));
+      }
+    }
+  }
+
   // add interpolation variable to push first state towards actual state
   obj_i += -r_alpha_pos_ * alpha_pos_grb_;
   obj_i += -r_alpha_vel_ * alpha_vel_grb_;
@@ -2687,6 +2753,9 @@ void Agent::DeclareRosParameters() {
   declare_parameter("r_alpha_pos", 1000.0);
   declare_parameter("r_alpha_vel", 1000.0);
   declare_parameter("sim_noise_std", 0.0);
+  declare_parameter("dyn_obs_cost_enabled", false);
+  declare_parameter("dyn_obs_cost_weight", 100.0);
+  declare_parameter("dyn_obs_cost_d_thresh", 3.0);
 }
 
 void Agent::InitializeRosParameters() {
@@ -2755,6 +2824,9 @@ void Agent::InitializeRosParameters() {
   r_alpha_pos_ = get_parameter("r_alpha_pos").as_double();
   r_alpha_vel_ = get_parameter("r_alpha_vel").as_double();
   sim_noise_std_ = get_parameter("sim_noise_std").as_double();
+  dyn_obs_cost_enabled_ = get_parameter("dyn_obs_cost_enabled").as_bool();
+  dyn_obs_cost_weight_ = get_parameter("dyn_obs_cost_weight").as_double();
+  dyn_obs_cost_d_thresh_ = get_parameter("dyn_obs_cost_d_thresh").as_double();
 }
 
 void Agent::VoxelGridResponseCallback(
@@ -2772,6 +2844,10 @@ void Agent::VoxelGridResponseCallback(
       ClearInitialPositionVoxels(voxel_grid_);
     }
     voxel_grid_mtx_.unlock();
+
+    dyn_obstacles_mtx_.lock();
+    dyn_obstacles_curr_ = voxel_grid_stamped.voxel_grid.dyn_obstacles;
+    dyn_obstacles_mtx_.unlock();
 
     voxel_grid_ready_ = true;
     if (planner_verbose_) {
@@ -2828,6 +2904,10 @@ void Agent::MappingUtilVoxelGridCallback(
     ClearInitialPositionVoxels(voxel_grid_);
   }
   voxel_grid_mtx_.unlock();
+
+  dyn_obstacles_mtx_.lock();
+  dyn_obstacles_curr_ = voxel_grid_stamped.voxel_grid.dyn_obstacles;
+  dyn_obstacles_mtx_.unlock();
 
   voxel_grid_ready_ = true;
   if (planner_verbose_) {
