@@ -1321,7 +1321,7 @@ void Agent::SolveOptimizationProblem() {
     int64_t stamp_ms = now().nanoseconds() / 1e6;
     ::std::cout << "id: " << id_ << " stamp optimization fail : " << stamp_ms
                 << ::std::endl;
-    if (!traj_curr.empty()) {
+    if (!traj_curr.empty() && !control_curr.empty()) {
       // Remove the first element
       traj_curr.erase(traj_curr.begin());
       control_curr.erase(control_curr.begin());
@@ -1335,6 +1335,14 @@ void Agent::SolveOptimizationProblem() {
       // save the vectors
       traj_curr_ = traj_curr;
       control_curr_ = control_curr;
+    } else if (!traj_curr.empty()) {
+      // no control sequence yet: this is the first solve after planning was
+      // started, so there is no previous solution to shift. Keep the
+      // trajectory that the start of planning initialized (the current state
+      // repeated over the horizon) with zero control, which holds the agent
+      // in place until a solve succeeds
+      traj_curr_ = traj_curr;
+      control_curr_.assign(n_hor_, ::std::vector<double>(3, 0.0));
     }
   }
 
