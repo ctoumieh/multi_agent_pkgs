@@ -34,7 +34,7 @@
     r_n: [100.0, 100.0, 100.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0] # last state variable error weight
     max_vel: 10.0 # maximum variable set in the optimization
     max_acc_z: 10.0 # maximum acceleration in the z direction
-    min_acc_z: -10.0 # minimum acceleration in the z direction
+    min_acc_z: -8.5 # minimum acceleration in the z direction (-10 is past free fall: hopping over another drone, the plan then needed 86-107 deg of tilt and nxt3 flipped, 20 Oct 2026)
     max_acc_xy: 10.0 # maximum acceleration in the x and y directions
     min_acc_xy: -10.0 # minimum acceleration in the x and y directions
     max_jerk: 40.0 # maximum jerk
